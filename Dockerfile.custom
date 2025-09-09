@@ -1,0 +1,11 @@
+# Use the official authentik server image as base
+FROM ghcr.io/goauthentik/server:2024.8.3
+
+# Copy the modified token.py file with cache bust
+RUN echo "Cache bust: $(date)"
+COPY authentik/providers/oauth2/views/token.py /authentik/providers/oauth2/views/token.py
+
+# Ensure proper permissions
+USER root
+RUN chown -R authentik:authentik /authentik/providers/oauth2/views/token.py
+USER authentik

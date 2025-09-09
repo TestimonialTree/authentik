@@ -23,6 +23,7 @@ from sentry_sdk.api import set_tag
 from structlog.stdlib import BoundLogger, get_logger
 
 from authentik.brands.models import Brand
+from authentik.lib.config import CONFIG
 from authentik.core.models import Application
 from authentik.events.models import Event, EventAction, cleanse_dict
 from authentik.flows.apps import HIST_FLOW_EXECUTION_STAGE_TIME
@@ -96,11 +97,16 @@ class InvalidStageError(SentryIgnoredException):
     """Error raised when a challenge from a stage is not valid"""
 
 
-@method_decorator(xframe_options_sameorigin, name="dispatch")
 class FlowExecutorView(APIView):
     """Flow executor, passing requests to Stage Views"""
 
     permission_classes = [AllowAny]
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Conditionally apply xframe_options_sameorigin decorator based on configuration
+        if not CONFIG.get_bool("web.disable_x_frame_options", False):
+            self.dispatch = method_decorator(xframe_options_sameorigin)(self.dispatch)
 
     flow: Flow = None
 
