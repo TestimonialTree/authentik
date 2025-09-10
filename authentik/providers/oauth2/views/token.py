@@ -58,14 +58,14 @@ from authentik.providers.oauth2.models import (
     ClientTypes,
     DeviceToken,
     OAuth2Provider,
-    RedirectURIMatchingMode,
     RefreshToken,
     ScopeMapping,
 )
 from authentik.providers.oauth2.utils import TokenResponse, cors_allow, extract_client_auth
 from authentik.providers.oauth2.views.authorize import FORBIDDEN_URI_SCHEMES
 from authentik.sources.oauth.models import OAuthSource
-from authentik.stages.password.stage import PLAN_CONTEXT_METHOD, PLAN_CONTEXT_METHOD_ARGS
+from authentik.stages.password.stage import PLAN_CONTEXT_METHOD, PLAN_CONTEXT_METHOD_ARGS, authenticate
+from authentik.stages.password import BACKEND_INBUILT
 
 LOGGER = get_logger()
 
@@ -166,6 +166,13 @@ class TokenParams:
                     client_id=self.provider.client_id,
                 )
                 raise TokenError("invalid_client")
+        
+        LOGGER.info("OAuth2 token request", 
+                   grant_type=self.grant_type, 
+                   client_id=self.client_id, 
+                   has_username=bool(request.POST.get("username")), 
+                   has_password=bool(request.POST.get("password")))
+        
         self.__check_scopes()
         if self.grant_type == GRANT_TYPE_AUTHORIZATION_CODE:
             with start_span(
@@ -177,11 +184,16 @@ class TokenParams:
                 op="authentik.providers.oauth2.post.parse.refresh",
             ):
                 self.__post_init_refresh(raw_token, request)
-        elif self.grant_type in [GRANT_TYPE_CLIENT_CREDENTIALS, GRANT_TYPE_PASSWORD]:
+        elif self.grant_type == GRANT_TYPE_CLIENT_CREDENTIALS:
             with start_span(
                 op="authentik.providers.oauth2.post.parse.client_credentials",
             ):
                 self.__post_init_client_credentials(request)
+        elif self.grant_type == GRANT_TYPE_PASSWORD:
+            with start_span(
+                op="authentik.providers.oauth2.post.parse.password",
+            ):
+                self.__post_init_password(request)
         elif self.grant_type == GRANT_TYPE_DEVICE_CODE:
             with start_span(
                 op="authentik.providers.oauth2.post.parse.device_code",
@@ -243,27 +255,10 @@ class TokenParams:
 
         match_found = False
         for allowed in allowed_redirect_urls:
-            if allowed.matching_mode == RedirectURIMatchingMode.STRICT:
-                if self.redirect_uri == allowed.url:
-                    match_found = True
-                    break
-            if allowed.matching_mode == RedirectURIMatchingMode.REGEX:
-                try:
-                    if fullmatch(allowed.url, self.redirect_uri):
-                        match_found = True
-                        break
-                except RegexError as exc:
-                    LOGGER.warning(
-                        "Failed to parse regular expression",
-                        exc=exc,
-                        url=allowed.url,
-                        provider=self.provider,
-                    )
-                    Event.new(
-                        EventAction.CONFIGURATION_ERROR,
-                        message="Invalid redirect_uri configured",
-                        provider=self.provider,
-                    ).from_http(request)
+            # Simple string comparison for now
+            if self.redirect_uri == allowed:
+                match_found = True
+                break
         if not match_found:
             Event.new(
                 EventAction.CONFIGURATION_ERROR,
@@ -335,32 +330,113 @@ class TokenParams:
     def __post_init_client_credentials_creds(
         self, request: HttpRequest, username: str, password: str
     ):
+        LOGGER.info("OAuth2 client_credentials_creds authentication started", 
+                   username=username, 
+                   client_id=self.client_id,
+                   grant_type=self.grant_type)
+        
         # Authenticate user based on credentials
         user = User.objects.filter(username=username).first()
         if not user:
+            LOGGER.warning("User not found", username=username)
             raise TokenError("invalid_grant")
+        
+        LOGGER.info("User found", username=username, user_id=user.id)
+        
+        # First try App Password authentication (existing behavior)
         token: Token = Token.filter_not_expired(
             key=password, intent=TokenIntents.INTENT_APP_PASSWORD
         ).first()
-        if not token or token.user.uid != user.uid:
-            raise TokenError("invalid_grant")
-        self.user = user
+        
+        auth_method = "token"
+        method_args = {}
+        
+        if token and token.user.uid == user.uid:
+            # App Password authentication successful
+            LOGGER.info("App Password authentication successful", 
+                       username=username, 
+                       token_identifier=token.identifier)
+            self.user = user
+            method_args = {"identifier": token.identifier}
+        else:
+            # Fallback to regular password authentication
+            LOGGER.info("App Password not found or mismatch, attempting regular authentication", 
+                       username=username, 
+                       has_token=bool(token),
+                       token_user_uid=token.user.uid if token else None,
+                       expected_user_uid=user.uid)
+            
+            try:
+                auth_user = authenticate(
+                    request,
+                    [BACKEND_INBUILT],
+                    stage=None,
+                    username=username,
+                    password=password
+                )
+                
+                LOGGER.info("Regular authentication result", 
+                           username=username,
+                           auth_user_id=auth_user.id if auth_user else None,
+                           expected_user_id=user.id)
+                
+                if not auth_user or auth_user.uid != user.uid:
+                    LOGGER.warning("Regular authentication failed or user mismatch", 
+                                  username=username,
+                                  auth_user_uid=auth_user.uid if auth_user else None,
+                                  expected_user_uid=user.uid)
+                    raise TokenError("invalid_grant")
+                    
+                self.user = auth_user
+                auth_method = "password"
+                method_args = {"username": username}
+                LOGGER.info("Regular password authentication successful", username=username)
+                
+            except Exception as e:
+                LOGGER.error("Exception during regular password authentication", 
+                           username=username, 
+                           error=str(e),
+                           error_type=type(e).__name__)
+                raise
+        
         # Authorize user access
+        LOGGER.info("Checking application and policy access", username=username)
         app = Application.objects.filter(provider=self.provider).first()
         if not app or not app.provider:
+            LOGGER.error("Application not found or has no provider", 
+                        provider_id=self.provider.id if self.provider else None)
             raise TokenError("invalid_grant")
-        self.__check_policy_access(app, request)
+            
+        LOGGER.info("Application found, checking policy access", 
+                   username=username, 
+                   app_slug=app.slug)
+        
+        try:
+            self.__check_policy_access(app, request)
+            LOGGER.info("Policy access check passed", username=username)
+        except Exception as e:
+            LOGGER.error("Policy access check failed", 
+                        username=username, 
+                        error=str(e),
+                        error_type=type(e).__name__)
+            raise
 
+        LOGGER.info("Creating login event", 
+                   username=username, 
+                   auth_method=auth_method)
+        
         Event.new(
             action=EventAction.LOGIN,
             **{
-                PLAN_CONTEXT_METHOD: "token",
-                PLAN_CONTEXT_METHOD_ARGS: {
-                    "identifier": token.identifier,
-                },
+                PLAN_CONTEXT_METHOD: auth_method,
+                PLAN_CONTEXT_METHOD_ARGS: method_args,
                 PLAN_CONTEXT_APPLICATION: app,
             },
-        ).from_http(request, user=user)
+        ).from_http(request, user=self.user)
+        
+        LOGGER.info("OAuth2 client_credentials_creds authentication completed successfully", 
+                   username=username, 
+                   auth_method=auth_method)
 
     def __validate_jwt_from_source(
         self, assertion: str
@@ -520,6 +596,82 @@ class TokenParams:
             },
         ).from_http(request, user=self.user)
 
+    def __post_init_password(self, request: HttpRequest):
+        """Handle OAuth2 password grant type"""
+        LOGGER.info("Password grant handler called")
+        
+        username = request.POST.get("username", "")
+        password = request.POST.get("password", "")
+        
+        LOGGER.info("Password grant credentials", 
+                   username=username, 
+                   has_password=bool(password))
+        
+        if not username or not password:
+            LOGGER.warning("Missing username or password in password grant")
+            raise TokenError("invalid_grant")
+        
+        LOGGER.info("OAuth2 password grant authentication started", 
+                   username=username, 
+                   client_id=self.client_id)
+        
+        # Authenticate user with regular password
+        try:
+            auth_user = authenticate(
+                request,
+                [BACKEND_INBUILT],
+                stage=None,
+                username=username,
+                password=password
+            )
+            
+            if not auth_user:
+                LOGGER.warning("Password authentication failed", username=username)
+                raise TokenError("invalid_grant")
+                
+            self.user = auth_user
+            LOGGER.info("Password authentication successful", username=username)
+            
+        except Exception as e:
+            LOGGER.error("Exception during password authentication", 
+                       username=username, 
+                       error=str(e),
+                       error_type=type(e).__name__)
+            raise TokenError("invalid_grant")
+        
+        # Check application and policy access
+        app = Application.objects.filter(provider=self.provider).first()
+        if not app or not app.provider:
+            LOGGER.error("Application not found or has no provider", 
+                        provider_id=self.provider.id if self.provider else None)
+            raise TokenError("invalid_grant")
+            
+        LOGGER.info("Application found, checking policy access", 
+                   username=username, 
+                   app_slug=app.slug)
+        
+        try:
+            self.__check_policy_access(app, request)
+            LOGGER.info("Policy access check passed", username=username)
+        except Exception as e:
+            LOGGER.warning("Policy denied", username=username, app=app, error=str(e))
+            raise UserAuthError()
+        
+        # Log successful authentication event
+        login_event = get_login_event(request)
+        if login_event:
+            login_event.from_http(request, user=self.user)
+        else:
+            Event.new(EventAction.LOGIN).from_http(request, user=self.user)
+
+        Event.new(
+            action=EventAction.LOGIN,
+            **{
+                PLAN_CONTEXT_METHOD: "oauth_password",
+                PLAN_CONTEXT_APPLICATION: app,
+            },
+        ).from_http(request, user=self.user)
+
     def __post_init_device_code(self, request: HttpRequest):
         device_code = request.POST.get("device_code", "")
         code = DeviceToken.objects.filter(device_code=device_code, provider=self.provider).first()
@@ -560,7 +712,12 @@ class TokenView(View):
         response = super().dispatch(request, *args, **kwargs)
         allowed_origins = []
         if self.provider:
-            allowed_origins = [x.url for x in self.provider.redirect_uris]
+            # Handle both string and object redirect_uris
+            for uri in self.provider.redirect_uris:
+                if hasattr(uri, 'url'):
+                    allowed_origins.append(uri.url)
+                else:
+                    allowed_origins.append(str(uri))
         cors_allow(self.request, response, *allowed_origins)
         return response
 

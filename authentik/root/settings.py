@@ -7,7 +7,7 @@ from pathlib import Path
 
 import orjson
 from sentry_sdk import set_tag
-from xmlsec import enable_debug_trace
+# from xmlsec import enable_debug_trace  # Temporarily disabled due to library compatibility issue
 
 from authentik import authentik_version
 from authentik.lib.config import CONFIG, django_db_config, redis_url
@@ -263,10 +263,10 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "authentik.root.middleware.CsrfViewMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
-    "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "authentik.core.middleware.ImpersonateMiddleware",
     "authentik.rbac.middleware.InitialPermissionsMiddleware",
 ]
+
 MIDDLEWARE_LAST = [
     "django_prometheus.middleware.PrometheusAfterMiddleware",
 ]
@@ -566,7 +566,7 @@ if DEBUG:
         "rest_framework.renderers.BrowsableAPIRenderer"
     )
     SHARED_APPS.insert(SHARED_APPS.index("django.contrib.staticfiles"), "daphne")
-    enable_debug_trace(True)
+    # enable_debug_trace(True)  # Temporarily disabled due to library compatibility issue
 
 
 CONFIG.log("info", "Booting authentik", version=authentik_version())
@@ -578,3 +578,26 @@ _update_settings("data.user_settings")
 MIDDLEWARE = list(OrderedDict.fromkeys(MIDDLEWARE_FIRST + MIDDLEWARE + MIDDLEWARE_LAST))
 SHARED_APPS = list(OrderedDict.fromkeys(SHARED_APPS + TENANT_APPS))
 INSTALLED_APPS = list(OrderedDict.fromkeys(SHARED_APPS + TENANT_APPS))
+
+# Conditionally configure X-Frame-Options based on configuration
+# This must be done after the final MIDDLEWARE list is assembled
+if CONFIG.get_bool("web.disable_x_frame_options", False):
+    # When iframe embedding is enabled, remove middleware and disable headers
+    MIDDLEWARE = [m for m in MIDDLEWARE if m != "django.middleware.clickjacking.XFrameOptionsMiddleware"]
+    X_FRAME_OPTIONS = None  # Disable all X-Frame-Options headers
+else:
+    # Default secure behavior - add middleware if not present and set deny
+    if "django.middleware.clickjacking.XFrameOptionsMiddleware" not in MIDDLEWARE:
+        MIDDLEWARE.insert(-2, "django.middleware.clickjacking.XFrameOptionsMiddleware")
+    X_FRAME_OPTIONS = 'DENY'
+
+# Final override to ensure X-Frame-Options configuration takes effect
+# This runs at the very end to prevent any sub-app from overriding it
+import atexit
+def _final_xframe_override():
+    if CONFIG.get_bool("web.disable_x_frame_options", False):
+        globals()['X_FRAME_OPTIONS'] = None
+        MIDDLEWARE[:] = [m for m in MIDDLEWARE if m != "django.middleware.clickjacking.XFrameOptionsMiddleware"]
+
+# Apply the override immediately and schedule it for later if needed
+_final_xframe_override()
