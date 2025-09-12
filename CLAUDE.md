@@ -1,0 +1,1 @@
+- the target account for aws cli for dev environment is 597332957026 tt-sandbox
