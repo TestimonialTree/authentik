@@ -216,3 +216,9 @@ docker-compose.override.yml
 # 
 .claude/
 
+# Terraform
+.terraform/
+terraform.tfstate
+terraform.tfstate.backup
+.terraform.tfstate.lock.info
+
