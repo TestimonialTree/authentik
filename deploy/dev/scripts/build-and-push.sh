@@ -3,7 +3,7 @@
 set -e
 
 # Configuration
-AWS_REGION=${AWS_REGION:-us-west-2}
+AWS_REGION=${AWS_REGION:-us-east-1}
 ECR_REPOSITORY=${ECR_REPOSITORY:-authentik-dev}
 IMAGE_TAG=${IMAGE_TAG:-latest}
 AWS_ACCOUNT_ID=${AWS_ACCOUNT_ID:-"your-account-id"}

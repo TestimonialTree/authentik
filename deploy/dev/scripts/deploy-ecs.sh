@@ -3,7 +3,7 @@
 set -e
 
 # Configuration
-AWS_REGION=${AWS_REGION:-us-west-2}
+AWS_REGION=${AWS_REGION:-us-east-1}
 CLUSTER_NAME=${CLUSTER_NAME:-authentik-dev}
 SERVICE_NAME=${SERVICE_NAME:-authentik-dev-service}
 ECR_REPOSITORY=${ECR_REPOSITORY:-authentik-dev}
@@ -48,7 +48,7 @@ cat > deploy/dev/task-definition.json << EOF
   "requiresCompatibilities": ["FARGATE"],
   "cpu": "512",
   "memory": "1024",
-  "executionRoleArn": "arn:aws:iam::$AWS_ACCOUNT_ID:role/ecsTaskExecutionRole",
+  "executionRoleArn": "arn:aws:iam::$AWS_ACCOUNT_ID:role/authentik-dev-ecs-execution-role",
   "containerDefinitions": [
     {
       "name": "authentik-server",
@@ -82,23 +82,23 @@ cat > deploy/dev/task-definition.json << EOF
       "secrets": [
         {
           "name": "AUTHENTIK_SECRET_KEY",
-          "valueFrom": "arn:aws:secretsmanager:$AWS_REGION:$AWS_ACCOUNT_ID:secret:authentik/dev/secret-key"
+          "valueFrom": "arn:aws:secretsmanager:$AWS_REGION:$AWS_ACCOUNT_ID:secret:authentik-dev/secret-key"
         },
         {
           "name": "AUTHENTIK_POSTGRESQL__HOST",
-          "valueFrom": "arn:aws:secretsmanager:$AWS_REGION:$AWS_ACCOUNT_ID:secret:authentik/dev/rds-host"
+          "valueFrom": "arn:aws:secretsmanager:$AWS_REGION:$AWS_ACCOUNT_ID:secret:authentik-dev/rds-host"
         },
         {
           "name": "AUTHENTIK_POSTGRESQL__PASSWORD",
-          "valueFrom": "arn:aws:secretsmanager:$AWS_REGION:$AWS_ACCOUNT_ID:secret:authentik/dev/rds-password"
+          "valueFrom": "arn:aws:secretsmanager:$AWS_REGION:$AWS_ACCOUNT_ID:secret:authentik-dev/rds-password"
         },
         {
           "name": "AUTHENTIK_POSTGRESQL__USER",
-          "valueFrom": "arn:aws:secretsmanager:$AWS_REGION:$AWS_ACCOUNT_ID:secret:authentik/dev/rds-user"
+          "valueFrom": "arn:aws:secretsmanager:$AWS_REGION:$AWS_ACCOUNT_ID:secret:authentik-dev/rds-user"
         },
         {
           "name": "AUTHENTIK_POSTGRESQL__NAME",
-          "valueFrom": "arn:aws:secretsmanager:$AWS_REGION:$AWS_ACCOUNT_ID:secret:authentik/dev/rds-database"
+          "valueFrom": "arn:aws:secretsmanager:$AWS_REGION:$AWS_ACCOUNT_ID:secret:authentik-dev/rds-database"
         }
       ],
       "logConfiguration": {
@@ -128,23 +128,23 @@ cat > deploy/dev/task-definition.json << EOF
       "secrets": [
         {
           "name": "AUTHENTIK_SECRET_KEY",
-          "valueFrom": "arn:aws:secretsmanager:$AWS_REGION:$AWS_ACCOUNT_ID:secret:authentik/dev/secret-key"
+          "valueFrom": "arn:aws:secretsmanager:$AWS_REGION:$AWS_ACCOUNT_ID:secret:authentik-dev/secret-key"
         },
         {
           "name": "AUTHENTIK_POSTGRESQL__HOST",
-          "valueFrom": "arn:aws:secretsmanager:$AWS_REGION:$AWS_ACCOUNT_ID:secret:authentik/dev/rds-host"
+          "valueFrom": "arn:aws:secretsmanager:$AWS_REGION:$AWS_ACCOUNT_ID:secret:authentik-dev/rds-host"
         },
         {
           "name": "AUTHENTIK_POSTGRESQL__PASSWORD",
-          "valueFrom": "arn:aws:secretsmanager:$AWS_REGION:$AWS_ACCOUNT_ID:secret:authentik/dev/rds-password"
+          "valueFrom": "arn:aws:secretsmanager:$AWS_REGION:$AWS_ACCOUNT_ID:secret:authentik-dev/rds-password"
         },
         {
           "name": "AUTHENTIK_POSTGRESQL__USER",
-          "valueFrom": "arn:aws:secretsmanager:$AWS_REGION:$AWS_ACCOUNT_ID:secret:authentik/dev/rds-user"
+          "valueFrom": "arn:aws:secretsmanager:$AWS_REGION:$AWS_ACCOUNT_ID:secret:authentik-dev/rds-user"
         },
         {
           "name": "AUTHENTIK_POSTGRESQL__NAME",
-          "valueFrom": "arn:aws:secretsmanager:$AWS_REGION:$AWS_ACCOUNT_ID:secret:authentik/dev/rds-database"
+          "valueFrom": "arn:aws:secretsmanager:$AWS_REGION:$AWS_ACCOUNT_ID:secret:authentik-dev/rds-database"
         }
       ],
       "logConfiguration": {

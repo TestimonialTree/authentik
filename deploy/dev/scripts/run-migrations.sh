@@ -6,7 +6,7 @@ set -e
 ECR_REPOSITORY=${ECR_REPOSITORY:-authentik-dev}
 IMAGE_TAG=${IMAGE_TAG:-latest}
 AWS_ACCOUNT_ID=${AWS_ACCOUNT_ID:-"your-account-id"}
-AWS_REGION=${AWS_REGION:-us-west-2}
+AWS_REGION=${AWS_REGION:-us-east-1}
 
 # Colors for output
 RED='\033[0;31m'

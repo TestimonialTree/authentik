@@ -1,0 +1,136 @@
+{
+  "family": "authentik-dev",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::597332957026:role/authentik-dev-ecs-execution-role",
+  "containerDefinitions": [
+    {
+      "name": "authentik-server",
+      "image": "597332957026.dkr.ecr.us-east-1.amazonaws.com/authentik-dev:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 9000,
+          "protocol": "tcp"
+        },
+        {
+          "containerPort": 9443,
+          "protocol": "tcp"
+        }
+      ],
+      "command": ["server"],
+      "environment": [
+        {
+          "name": "AUTHENTIK_COOKIE_DOMAIN",
+          "value": "dev-auth.testimonialtree.com"
+        },
+        {
+          "name": "AUTHENTIK_CSRF_COOKIE_SECURE",
+          "value": "true"
+        },
+        {
+          "name": "AUTHENTIK_SESSION_COOKIE_SECURE",
+          "value": "true"
+        }
+      ],
+      "secrets": [
+        {
+          "name": "AUTHENTIK_SECRET_KEY",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:597332957026:secret:authentik-dev/secret-key"
+        },
+        {
+          "name": "AUTHENTIK_POSTGRESQL__HOST",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:597332957026:secret:authentik-dev/rds-host"
+        },
+        {
+          "name": "AUTHENTIK_POSTGRESQL__PASSWORD",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:597332957026:secret:authentik-dev/rds-password"
+        },
+        {
+          "name": "AUTHENTIK_POSTGRESQL__USER",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:597332957026:secret:authentik-dev/rds-user"
+        },
+        {
+          "name": "AUTHENTIK_POSTGRESQL__NAME",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:597332957026:secret:authentik-dev/rds-database"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/authentik-dev",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "healthCheck": {
+        "command": [
+          "CMD-SHELL",
+          "python -c \"import requests; requests.get('http://localhost:9000/-/health/ready/')\""
+        ],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 60
+      }
+    },
+    {
+      "name": "authentik-worker",
+      "image": "597332957026.dkr.ecr.us-east-1.amazonaws.com/authentik-dev:latest",
+      "essential": true,
+      "command": ["worker"],
+      "secrets": [
+        {
+          "name": "AUTHENTIK_SECRET_KEY",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:597332957026:secret:authentik-dev/secret-key"
+        },
+        {
+          "name": "AUTHENTIK_POSTGRESQL__HOST",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:597332957026:secret:authentik-dev/rds-host"
+        },
+        {
+          "name": "AUTHENTIK_POSTGRESQL__PASSWORD",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:597332957026:secret:authentik-dev/rds-password"
+        },
+        {
+          "name": "AUTHENTIK_POSTGRESQL__USER",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:597332957026:secret:authentik-dev/rds-user"
+        },
+        {
+          "name": "AUTHENTIK_POSTGRESQL__NAME",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:597332957026:secret:authentik-dev/rds-database"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/authentik-dev",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    },
+    {
+      "name": "redis",
+      "image": "docker.io/library/redis:alpine",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 6379,
+          "protocol": "tcp"
+        }
+      ],
+      "command": ["redis-server", "--save", "60", "1", "--loglevel", "warning"],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/authentik-dev",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}
