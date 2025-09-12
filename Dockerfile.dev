@@ -1,0 +1,22 @@
+# Development Dockerfile for AWS deployment with external RDS PostgreSQL
+FROM ghcr.io/goauthentik/server:2024.8.3
+
+# Copy the modified token.py file with cache bust
+RUN echo "Cache bust: $(date)"
+COPY authentik/providers/oauth2/views/token.py /authentik/providers/oauth2/views/token.py
+
+# Ensure proper permissions
+USER root
+RUN chown -R authentik:authentik /authentik/providers/oauth2/views/token.py
+
+# Install additional dependencies for AWS deployment if needed
+# RUN pip install --no-cache-dir boto3 psycopg2-binary
+
+USER authentik
+
+# Health check for container orchestration
+HEALTHCHECK --interval=30s --timeout=30s --start-period=60s --retries=3 \
+  CMD python -c "import requests; requests.get('http://localhost:9000/-/health/ready/')" || exit 1
+
+# Default command (can be overridden in docker-compose or ECS task definition)
+CMD ["server"]
