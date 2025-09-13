@@ -39,5 +39,6 @@
     ],
     "github-actions.workflows.pinned.workflows": [
         ".github/workflows/ci-main.yml"
-    ]
+    ],
+    "python.terminal.activateEnvironment": false
 }

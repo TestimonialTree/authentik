@@ -51,3 +51,22 @@ variable "private_subnet_2_cidr" {
   type        = string
   default     = "10.0.4.0/24"
 }
+
+# GitHub repository variables for CodePipeline
+variable "github_owner" {
+  description = "GitHub repository owner/organization"
+  type        = string
+  default     = "goauthentik"
+}
+
+variable "github_repo" {
+  description = "GitHub repository name"
+  type        = string
+  default     = "authentik"
+}
+
+variable "github_branch" {
+  description = "GitHub branch to track"
+  type        = string
+  default     = "main"
+}

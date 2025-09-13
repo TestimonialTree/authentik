@@ -49,3 +49,24 @@ output "authentik_secret_key" {
   value       = random_password.authentik_secret_key.result
   sensitive   = true
 }
+
+# CodePipeline outputs
+output "codepipeline_name" {
+  description = "Name of the CodePipeline"
+  value       = aws_codepipeline.authentik_pipeline.name
+}
+
+output "codebuild_project_name" {
+  description = "Name of the CodeBuild project"
+  value       = aws_codebuild_project.authentik_build.name
+}
+
+output "source_bucket_name" {
+  description = "Name of the S3 bucket for source artifacts"
+  value       = aws_s3_bucket.source_artifacts.bucket
+}
+
+output "github_secret_arn" {
+  description = "ARN of the GitHub token secret"
+  value       = aws_secretsmanager_secret.github_token.arn
+}

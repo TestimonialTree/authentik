@@ -1,0 +1,157 @@
+version: 0.2
+
+phases:
+  pre_build:
+    commands:
+      - echo Logging in to Amazon ECR...
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
+      - REPOSITORY_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME
+      - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
+      - IMAGE_TAG=${COMMIT_HASH:=latest}
+      - echo Repository URI is $REPOSITORY_URI
+      - echo Image tag is $IMAGE_TAG
+  build:
+    commands:
+      - echo Build started on `date`
+      - echo Building the Docker image...
+      - |
+        docker build \
+          --build-arg GIT_BUILD_HASH=$COMMIT_HASH \
+          --build-arg VERSION=dev-$IMAGE_TAG \
+          --build-arg BUILDPLATFORM=linux/amd64 \
+          --build-arg TARGETARCH=amd64 \
+          --build-arg TARGETOS=linux \
+          -t $IMAGE_REPO_NAME:$IMAGE_TAG .
+      - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $REPOSITORY_URI:$IMAGE_TAG
+      - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $REPOSITORY_URI:latest
+  post_build:
+    commands:
+      - echo Build completed on `date`
+      - echo Pushing the Docker images...
+      - docker push $REPOSITORY_URI:$IMAGE_TAG
+      - docker push $REPOSITORY_URI:latest
+      - echo Writing image definitions file...
+      - |
+        cat > imageDefinitions.json <<EOF
+        [
+          {
+            "name": "authentik",
+            "imageUri": "$REPOSITORY_URI:$IMAGE_TAG"
+          }
+        ]
+        EOF
+      - echo Writing task definition template...
+      - |
+        cat > taskdef.json <<EOF
+        {
+          "family": "$IMAGE_REPO_NAME",
+          "networkMode": "awsvpc",
+          "requiresCompatibilities": ["FARGATE"],
+          "cpu": "1024",
+          "memory": "2048",
+          "executionRoleArn": "arn:aws:iam::$AWS_ACCOUNT_ID:role/$IMAGE_REPO_NAME-ecs-execution-role",
+          "taskRoleArn": "arn:aws:iam::$AWS_ACCOUNT_ID:role/$IMAGE_REPO_NAME-ecs-execution-role",
+          "containerDefinitions": [
+            {
+              "name": "authentik",
+              "image": "<IMAGE1_URI>",
+              "portMappings": [
+                {
+                  "containerPort": 9000,
+                  "hostPort": 9000,
+                  "protocol": "tcp"
+                },
+                {
+                  "containerPort": 9443,
+                  "hostPort": 9443,
+                  "protocol": "tcp"
+                }
+              ],
+              "environment": [
+                {
+                  "name": "AUTHENTIK_REDIS__HOST",
+                  "value": "redis"
+                },
+                {
+                  "name": "AUTHENTIK_LOG_LEVEL",
+                  "value": "info"
+                }
+              ],
+              "secrets": [
+                {
+                  "name": "AUTHENTIK_SECRET_KEY",
+                  "valueFrom": "arn:aws:secretsmanager:$AWS_DEFAULT_REGION:$AWS_ACCOUNT_ID:secret:$IMAGE_REPO_NAME-authentik-secret-key"
+                },
+                {
+                  "name": "AUTHENTIK_POSTGRESQL__HOST",
+                  "valueFrom": "arn:aws:secretsmanager:$AWS_DEFAULT_REGION:$AWS_ACCOUNT_ID:secret:$IMAGE_REPO_NAME-rds-host"
+                },
+                {
+                  "name": "AUTHENTIK_POSTGRESQL__PASSWORD",
+                  "valueFrom": "arn:aws:secretsmanager:$AWS_DEFAULT_REGION:$AWS_ACCOUNT_ID:secret:$IMAGE_REPO_NAME-rds-password"
+                },
+                {
+                  "name": "AUTHENTIK_POSTGRESQL__USER",
+                  "valueFrom": "arn:aws:secretsmanager:$AWS_DEFAULT_REGION:$AWS_ACCOUNT_ID:secret:$IMAGE_REPO_NAME-rds-user"
+                },
+                {
+                  "name": "AUTHENTIK_POSTGRESQL__NAME",
+                  "valueFrom": "arn:aws:secretsmanager:$AWS_DEFAULT_REGION:$AWS_ACCOUNT_ID:secret:$IMAGE_REPO_NAME-rds-database"
+                }
+              ],
+              "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                  "awslogs-group": "/ecs/$IMAGE_REPO_NAME",
+                  "awslogs-region": "$AWS_DEFAULT_REGION",
+                  "awslogs-stream-prefix": "ecs"
+                }
+              },
+              "essential": true
+            },
+            {
+              "name": "redis",
+              "image": "redis:7-alpine",
+              "portMappings": [
+                {
+                  "containerPort": 6379,
+                  "hostPort": 6379,
+                  "protocol": "tcp"
+                }
+              ],
+              "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                  "awslogs-group": "/ecs/$IMAGE_REPO_NAME",
+                  "awslogs-region": "$AWS_DEFAULT_REGION",
+                  "awslogs-stream-prefix": "ecs"
+                }
+              },
+              "essential": true
+            }
+          ]
+        }
+        EOF
+      - echo Writing appspec template...
+      - |
+        cat > appspec.yaml <<EOF
+        version: 0.0
+        Resources:
+          - TargetService:
+              Type: AWS::ECS::Service
+              Properties:
+                TaskDefinition: <TASK_DEFINITION>
+                LoadBalancerInfo:
+                  ContainerName: "authentik"
+                  ContainerPort: 9000
+        EOF
+
+artifacts:
+  files:
+    - imageDefinitions.json
+    - taskdef.json  
+    - appspec.yaml
+
+cache:
+  paths:
+    - '/root/.cache/docker/**/*'
