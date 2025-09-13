@@ -49,28 +49,9 @@ resource "aws_acm_certificate" "main" {
   }
 }
 
-# Certificate validation
-resource "aws_route53_record" "cert_validation" {
-  for_each = {
-    for dvo in aws_acm_certificate.main.domain_validation_options : dvo.domain_name => {
-      name   = dvo.resource_record_name
-      record = dvo.resource_record_value
-      type   = dvo.resource_record_type
-    }
-  }
-
-  allow_overwrite = true
-  name            = each.value.name
-  records         = [each.value.record]
-  ttl             = 60
-  type            = each.value.type
-  zone_id         = var.hosted_zone_id
-}
-
-resource "aws_acm_certificate_validation" "main" {
-  certificate_arn         = aws_acm_certificate.main.arn
-  validation_record_fqdns = [for record in aws_route53_record.cert_validation : record.fqdn]
-}
+# Certificate validation (manual - DNS managed in different account)
+# NOTE: Certificate validation must be done manually in the DNS management account
+# The validation records will be shown in the ACM console and need to be added manually
 
 # HTTPS Listener
 resource "aws_lb_listener" "https" {
@@ -78,7 +59,7 @@ resource "aws_lb_listener" "https" {
   port              = "443"
   protocol          = "HTTPS"
   ssl_policy        = "ELBSecurityPolicy-TLS-1-2-2017-01"
-  certificate_arn   = aws_acm_certificate_validation.main.certificate_arn
+  certificate_arn   = aws_acm_certificate.main.arn
 
   default_action {
     type             = "forward"
@@ -103,15 +84,6 @@ resource "aws_lb_listener" "http" {
   }
 }
 
-# Route 53 DNS Record
-resource "aws_route53_record" "main" {
-  zone_id = var.hosted_zone_id
-  name    = var.domain_name
-  type    = "A"
-
-  alias {
-    name                   = aws_lb.main.dns_name
-    zone_id                = aws_lb.main.zone_id
-    evaluate_target_health = true
-  }
-}
+# DNS Record (managed in different account)
+# NOTE: The A record for dev-auth.testimonialtree.com needs to be created manually
+# pointing to the load balancer DNS name: aws_lb.main.dns_name

@@ -70,3 +70,26 @@ output "github_secret_arn" {
   description = "ARN of the GitHub token secret"
   value       = aws_secretsmanager_secret.github_token.arn
 }
+
+# SSL Certificate and DNS configuration
+output "ssl_certificate_arn" {
+  description = "ARN of the SSL certificate (needs manual DNS validation)"
+  value       = aws_acm_certificate.main.arn
+}
+
+output "dns_configuration_notes" {
+  description = "Manual DNS configuration required"
+  value = <<EOF
+MANUAL DNS CONFIGURATION REQUIRED:
+
+1. SSL Certificate Validation:
+   - Go to AWS Certificate Manager console
+   - Find certificate: ${aws_acm_certificate.main.arn}
+   - Add the CNAME validation records to your DNS (managed in different account)
+
+2. Main DNS Record:
+   - Create an A record for: ${var.domain_name}
+   - Point to ALB DNS name: ${aws_lb.main.dns_name}
+   - This should be done in your main DNS management account
+EOF
+}

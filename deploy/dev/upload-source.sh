@@ -53,12 +53,18 @@ rsync -av \
     --exclude='.DS_Store' \
     --exclude='deploy/dev/terraform/terraform.tfstate*' \
     --exclude='deploy/dev/terraform/.terraform/' \
-    . "$TEMP_DIR/authentik-source/"
+    . "$TEMP_DIR/"
+
+# Copy the API package separately for gen-ts-api
+echo "📦 Adding @goauthentik/api package for buildspec..."
+mkdir -p "$TEMP_DIR/web/node_modules/@goauthentik"
+cp -r web/node_modules/@goauthentik/api "$TEMP_DIR/web/node_modules/@goauthentik/"
+echo "✅ API package copied successfully"
 
 # Create the zip file
 echo "🗜️  Creating source archive..."
 cd "$TEMP_DIR"
-zip -r source.zip authentik-source/
+zip -r source.zip . -x "*.zip"
 
 # Upload to S3
 echo "☁️  Uploading to S3..."

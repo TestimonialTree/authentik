@@ -74,7 +74,10 @@ resource "aws_iam_role_policy" "codepipeline_policy" {
           "ecs:DescribeTasks",
           "ecs:ListTasks",
           "ecs:RegisterTaskDefinition",
-          "ecs:UpdateService"
+          "ecs:UpdateService",
+          "ecs:DescribeClusters",
+          "ecs:DescribeContainerInstances",
+          "ecs:TagResource"
         ]
         Resource = "*"
       },
@@ -85,7 +88,7 @@ resource "aws_iam_role_policy" "codepipeline_policy" {
         ]
         Resource = [
           aws_iam_role.codebuild_role.arn,
-          aws_iam_role.codedeploy_role.arn
+          aws_iam_role.ecs_execution_role.arn
         ]
       }
     ]
@@ -172,32 +175,9 @@ resource "aws_iam_role_policy" "codebuild_policy" {
   })
 }
 
-# CodeDeploy Service Role
-resource "aws_iam_role" "codedeploy_role" {
-  name = "${var.project_name}-codedeploy-role"
+# CodeDeploy Service Role removed for dev environment
 
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Service = "codedeploy.amazonaws.com"
-        }
-      }
-    ]
-  })
-
-  tags = {
-    Name = "${var.project_name}-codedeploy-role"
-  }
-}
-
-resource "aws_iam_role_policy_attachment" "codedeploy_policy" {
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSCodeDeployRoleForECS"
-  role       = aws_iam_role.codedeploy_role.name
-}
+# CodeDeploy IAM policy removed for dev environment
 
 # S3 Bucket for CodePipeline artifacts
 resource "aws_s3_bucket" "codepipeline_artifacts" {
@@ -356,58 +336,8 @@ resource "aws_codebuild_project" "authentik_build" {
   }
 }
 
-# CodeDeploy Application
-resource "aws_codedeploy_app" "authentik_app" {
-  compute_platform = "ECS"
-  name             = "${var.project_name}-app"
-
-  tags = {
-    Name = "${var.project_name}-app"
-  }
-}
-
-# CodeDeploy Deployment Group
-resource "aws_codedeploy_deployment_group" "authentik_deployment_group" {
-  app_name               = aws_codedeploy_app.authentik_app.name
-  deployment_config_name = "CodeDeployDefault.ECSAllAtOnce"
-  deployment_group_name  = "${var.project_name}-deployment-group"
-  service_role_arn       = aws_iam_role.codedeploy_role.arn
-
-  auto_rollback_configuration {
-    enabled = true
-    events  = ["DEPLOYMENT_FAILURE"]
-  }
-
-  blue_green_deployment_config {
-    terminate_blue_instances_on_deployment_success {
-      action                         = "TERMINATE"
-      termination_wait_time_in_minutes = 5
-    }
-
-    deployment_ready_option {
-      action_on_timeout = "CONTINUE_DEPLOYMENT"
-    }
-
-    green_fleet_provisioning_option {
-      action = "COPY_AUTO_SCALING_GROUP"
-    }
-  }
-
-  ecs_service {
-    cluster_name = aws_ecs_cluster.main.name
-    service_name = aws_ecs_service.main.name
-  }
-
-  load_balancer_info {
-    target_group_info {
-      name = aws_lb_target_group.main.name
-    }
-  }
-
-  tags = {
-    Name = "${var.project_name}-deployment-group"
-  }
-}
+# CodeDeploy resources removed for dev environment
+# Direct ECS deployment is simpler and more appropriate for dev
 
 # CodePipeline
 resource "aws_codepipeline" "authentik_pipeline" {
@@ -463,15 +393,14 @@ resource "aws_codepipeline" "authentik_pipeline" {
       name            = "Deploy"
       category        = "Deploy"
       owner           = "AWS"
-      provider        = "CodeDeployToECS"
+      provider        = "ECS"
       input_artifacts = ["build_output"]
       version         = "1"
 
       configuration = {
-        ApplicationName                = aws_codedeploy_app.authentik_app.name
-        DeploymentGroupName            = aws_codedeploy_deployment_group.authentik_deployment_group.deployment_group_name
-        TaskDefinitionTemplateArtifact = "build_output"
-        AppSpecTemplateArtifact        = "build_output"
+        ClusterName = aws_ecs_cluster.main.name
+        ServiceName = aws_ecs_service.main.name
+        FileName    = "imageDefinitions.json"
       }
     }
   }

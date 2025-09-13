@@ -88,7 +88,8 @@ resource "aws_ecs_task_definition" "main" {
     {
       name  = "authentik"
       image = "${aws_ecr_repository.main.repository_url}:latest"
-      
+      command = ["server"]
+
       portMappings = [
         {
           containerPort = 9000
@@ -105,7 +106,7 @@ resource "aws_ecs_task_definition" "main" {
       environment = [
         {
           name  = "AUTHENTIK_REDIS__HOST"
-          value = "redis"
+          value = "localhost"
         },
         {
           name  = "AUTHENTIK_LOG_LEVEL"
@@ -133,6 +134,13 @@ resource "aws_ecs_task_definition" "main" {
         {
           name      = "AUTHENTIK_POSTGRESQL__NAME"
           valueFrom = aws_secretsmanager_secret.rds_database.arn
+        }
+      ]
+
+      dependsOn = [
+        {
+          containerName = "redis"
+          condition     = "START"
         }
       ]
 
@@ -184,6 +192,16 @@ resource "aws_ecs_service" "main" {
   task_definition = aws_ecs_task_definition.main.arn
   desired_count   = 1
   launch_type     = "FARGATE"
+
+  # Deployment configuration with error handling
+  deployment_maximum_percent         = 200
+  deployment_minimum_healthy_percent = 50
+
+  # Circuit breaker temporarily disabled for testing
+  deployment_circuit_breaker {
+    enable   = false
+    rollback = false
+  }
 
   network_configuration {
     security_groups  = [aws_security_group.ecs.id]

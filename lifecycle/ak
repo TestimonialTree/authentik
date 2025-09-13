@@ -79,6 +79,7 @@ fi
 
 if [[ "$1" == "server" ]]; then
     set_mode "server"
+    # Run the default server process; the go binary starts the server with no subcommand
     run_authentik
 elif [[ "$1" == "worker" ]]; then
     set_mode "worker"

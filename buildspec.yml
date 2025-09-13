@@ -10,6 +10,9 @@ phases:
       - IMAGE_TAG=${COMMIT_HASH:=latest}
       - echo Repository URI is $REPOSITORY_URI
       - echo Image tag is $IMAGE_TAG
+      - echo Creating gen-ts-api by copying existing working API from node_modules...
+      - cp -r web/node_modules/@goauthentik/api gen-ts-api
+      - echo "Copied existing API package to gen-ts-api directory"
   build:
     commands:
       - echo Build started on `date`
@@ -23,12 +26,14 @@ phases:
           --build-arg TARGETOS=linux \
           -t $IMAGE_REPO_NAME:$IMAGE_TAG .
       - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $REPOSITORY_URI:$IMAGE_TAG
+      - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $REPOSITORY_URI:dev-$IMAGE_TAG
       - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $REPOSITORY_URI:latest
   post_build:
     commands:
       - echo Build completed on `date`
       - echo Pushing the Docker images...
       - docker push $REPOSITORY_URI:$IMAGE_TAG
+      - docker push $REPOSITORY_URI:dev-$IMAGE_TAG
       - docker push $REPOSITORY_URI:latest
       - echo Writing image definitions file...
       - |
