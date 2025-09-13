@@ -224,3 +224,4 @@ docker-compose.override.yml
 terraform.tfstate
 terraform.tfstate.backup
 .terraform.tfstate.lock.info
+tfplan
