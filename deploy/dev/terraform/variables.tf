@@ -70,3 +70,10 @@ variable "github_branch" {
   type        = string
   default     = "main"
 }
+
+# Image to deploy for authentik server/worker
+variable "image_uri" {
+  description = "Docker image URI for authentik (e.g., ghcr.io/goauthentik/server:2024.8.3)"
+  type        = string
+  default     = "ghcr.io/goauthentik/server:2024.8.3"
+}

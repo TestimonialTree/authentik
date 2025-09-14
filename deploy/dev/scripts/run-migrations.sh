@@ -74,20 +74,12 @@ docker run --rm --env-file .env.dev \
 
 echo -e "${GREEN}Database migrations completed successfully!${NC}"
 
-# Create initial admin user (optional)
-read -p "Do you want to create an initial admin user? (y/n): " -n 1 -r
+# Note about initial admin user setup
+echo -e "${YELLOW}Note: Initial Admin User Setup${NC}"
+echo "After deployment, you can create the initial admin user via:"
+echo "1. Web Interface (Recommended): https://dev-auth.testimonialtree.com/if/flow/initial-setup/"
+echo "2. Command Line: Use ./scripts/create-admin.sh"
 echo
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    echo -e "${YELLOW}Creating initial admin user...${NC}"
-    echo "Please follow the prompts to create an admin user:"
-    
-    docker run --rm -it --env-file .env.dev \
-        $ECR_URI:$IMAGE_TAG \
-        ak create_admin_group
-        
-    docker run --rm -it --env-file .env.dev \
-        $ECR_URI:$IMAGE_TAG \
-        ak bootstrap_tasks
-fi
+echo "The web interface is easier and available immediately after deployment."
 
 echo -e "${GREEN}Setup completed! Your Authentik instance is ready to deploy.${NC}"

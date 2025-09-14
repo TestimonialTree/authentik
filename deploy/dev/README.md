@@ -86,13 +86,16 @@ chmod +x scripts/*.sh
 ### 6. Deploy ECS Service
 
 ```bash
-# Deploy to ECS Fargate
-./scripts/deploy-ecs.sh
+# Deploy to ECS Fargate via CodePipeline (recommended)
+# Push a commit to trigger the pipeline.
+
+# Or use the manual emergency deploy script (optional):
+./scripts/manual-deploy.sh
 ```
 
 ## Detailed Configuration
 
-### Environment Variables
+### Environment & Secrets
 
 Update `.env.dev` with your specific configuration:
 
@@ -101,8 +104,15 @@ Update `.env.dev` with your specific configuration:
 PG_HOST=your-rds-endpoint.region.rds.amazonaws.com
 PG_PASS=your-secure-rds-password  # Will be stored in Secrets Manager
 
-# Required: Generate a secure secret key
-AUTHENTIK_SECRET_KEY=your-64-character-secret-key
+Secrets are stored in a single JSON secret in AWS Secrets Manager: `authentik-dev/app-config` with keys:
+- `AUTHENTIK_SECRET_KEY`
+- `AUTHENTIK_POSTGRESQL__HOST`
+- `AUTHENTIK_POSTGRESQL__USER`
+- `AUTHENTIK_POSTGRESQL__PASSWORD`
+- `AUTHENTIK_POSTGRESQL__NAME`
+
+To create/update this secret from existing values:
+`bash deploy/dev/scripts/secrets-sync.sh`
 
 # Domain configuration
 AUTHENTIK_COOKIE_DOMAIN=dev-auth.testimonialtree.com
@@ -164,7 +174,7 @@ deploy/dev/
 └── scripts/
     ├── build-and-push.sh       # Build and push Docker image to ECR
     ├── run-migrations.sh       # Run database migrations
-    └── deploy-ecs.sh           # Deploy to ECS Fargate
+    └── manual-deploy.sh        # Manual/Emergency deploy to ECS Fargate
 ```
 
 ## Monitoring and Logs
@@ -284,9 +294,77 @@ rm -f deploy/dev/.env.image
 - SSL/TLS termination at load balancer level
 - Container logs do not contain sensitive information
 
+## Initial Admin Setup
+
+After deployment, you need to create the initial admin user (akadmin):
+
+### Via Web Interface (Recommended)
+
+1. **Navigate to the initial setup page**: https://dev-auth.testimonialtree.com/if/flow/initial-setup/
+2. **Fill out the form**:
+   - Email address for the admin user
+   - Strong password (store it securely in a password manager!)
+3. **Click "Continue"** to complete the setup
+
+**Note**: This initial setup flow is only available before the first admin user is created and will automatically disappear after setup is complete.
+
+### Via Command Line (Alternative)
+
+If the web interface is unavailable, you can use the helper script:
+
+```bash
+# Run the admin creation script
+./scripts/create-admin.sh
+```
+
+Or run the commands manually:
+
+```bash
+# Scale down service temporarily
+aws ecs update-service --cluster authentik-dev --service authentik-dev --desired-count 0
+
+# Create admin group
+aws ecs run-task \
+  --cluster authentik-dev \
+  --task-definition authentik-dev:27 \
+  --launch-type FARGATE \
+  --network-configuration "awsvpcConfiguration={subnets=[subnet-0853305679f0dfb1e,subnet-03488d1eba867dc11],securityGroups=[sg-0e4002f14830ba443],assignPublicIp=DISABLED}" \
+  --overrides '{"containerOverrides":[{"name":"authentik-server","command":["ak","create_admin_group"]},{"name":"authentik-worker","command":["sleep","60"]}]}'
+
+# Set admin password (this will prompt for password)
+aws ecs run-task \
+  --cluster authentik-dev \
+  --task-definition authentik-dev:27 \
+  --launch-type FARGATE \
+  --network-configuration "awsvpcConfiguration={subnets=[subnet-0853305679f0dfb1e,subnet-03488d1eba867dc11],securityGroups=[sg-0e4002f14830ba443],assignPublicIp=DISABLED}" \
+  --overrides '{"containerOverrides":[{"name":"authentik-server","command":["ak","changepassword","akadmin"]},{"name":"authentik-worker","command":["sleep","60"]}]}'
+
+# Scale service back up
+aws ecs update-service --cluster authentik-dev --service authentik-dev --desired-count 1
+```
+
+### Post-Setup Security Best Practices
+
+After creating the initial admin user:
+
+1. **Login** at https://dev-auth.testimonialtree.com/
+2. **Create a personal admin account**:
+   - Navigate to **Directory > Users > Create**
+   - Use your personal email address
+   - Set a strong password
+3. **Add your account to the admin group**:
+   - Navigate to **Directory > Groups**
+   - Click on **authentik Admins**
+   - Add your personal user to the group
+4. **Consider deactivating akadmin**:
+   - Navigate to **Directory > Users**
+   - Click on **akadmin**
+   - Uncheck **Is active** to disable the account
+   - This prevents any logins with the default admin username
+
 ## Next Steps
 
-After deployment:
+After deployment and admin setup:
 1. Access Authentik at `https://dev-auth.testimonialtree.com`
 2. Configure initial authentication providers
 3. Set up integration with your applications

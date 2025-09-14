@@ -52,13 +52,7 @@ resource "aws_iam_role_policy" "ecs_secrets_policy" {
         Action = [
           "secretsmanager:GetSecretValue"
         ]
-        Resource = [
-          aws_secretsmanager_secret.authentik_secret_key.arn,
-          aws_secretsmanager_secret.rds_host.arn,
-          aws_secretsmanager_secret.rds_password.arn,
-          aws_secretsmanager_secret.rds_user.arn,
-          aws_secretsmanager_secret.rds_database.arn
-        ]
+        Resource = [data.aws_secretsmanager_secret.app_config.arn]
       }
     ]
   })
@@ -86,8 +80,8 @@ resource "aws_ecs_task_definition" "main" {
 
   container_definitions = jsonencode([
     {
-      name  = "authentik"
-      image = "${aws_ecr_repository.main.repository_url}:latest"
+      name    = "authentik-server"
+      image   = var.image_uri
       command = ["server"]
 
       portMappings = [
@@ -115,33 +109,48 @@ resource "aws_ecs_task_definition" "main" {
       ]
 
       secrets = [
+        { name = "AUTHENTIK_SECRET_KEY",          valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:AUTHENTIK_SECRET_KEY::" },
+        { name = "AUTHENTIK_POSTGRESQL__HOST",    valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:AUTHENTIK_POSTGRESQL__HOST::" },
+        { name = "AUTHENTIK_POSTGRESQL__PASSWORD", valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:AUTHENTIK_POSTGRESQL__PASSWORD::" },
+        { name = "AUTHENTIK_POSTGRESQL__USER",    valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:AUTHENTIK_POSTGRESQL__USER::" },
+        { name = "AUTHENTIK_POSTGRESQL__NAME",    valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:AUTHENTIK_POSTGRESQL__NAME::" }
+      ]
+
+      dependsOn = [{ containerName = "redis", condition = "START" }]
+
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = aws_cloudwatch_log_group.main.name
+          "awslogs-region"        = var.aws_region
+          "awslogs-stream-prefix" = "ecs"
+        }
+      }
+
+      essential = true
+    },
+    {
+      name    = "authentik-worker"
+      image   = var.image_uri
+      command = ["worker"]
+
+      environment = [
         {
-          name      = "AUTHENTIK_SECRET_KEY"
-          valueFrom = aws_secretsmanager_secret.authentik_secret_key.arn
+          name  = "AUTHENTIK_REDIS__HOST"
+          value = "localhost"
         },
         {
-          name      = "AUTHENTIK_POSTGRESQL__HOST"
-          valueFrom = aws_secretsmanager_secret.rds_host.arn
-        },
-        {
-          name      = "AUTHENTIK_POSTGRESQL__PASSWORD"
-          valueFrom = aws_secretsmanager_secret.rds_password.arn
-        },
-        {
-          name      = "AUTHENTIK_POSTGRESQL__USER"
-          valueFrom = aws_secretsmanager_secret.rds_user.arn
-        },
-        {
-          name      = "AUTHENTIK_POSTGRESQL__NAME"
-          valueFrom = aws_secretsmanager_secret.rds_database.arn
+          name  = "AUTHENTIK_LOG_LEVEL"
+          value = "info"
         }
       ]
 
-      dependsOn = [
-        {
-          containerName = "redis"
-          condition     = "START"
-        }
+      secrets = [
+        { name = "AUTHENTIK_SECRET_KEY",          valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:AUTHENTIK_SECRET_KEY::" },
+        { name = "AUTHENTIK_POSTGRESQL__HOST",    valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:AUTHENTIK_POSTGRESQL__HOST::" },
+        { name = "AUTHENTIK_POSTGRESQL__PASSWORD", valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:AUTHENTIK_POSTGRESQL__PASSWORD::" },
+        { name = "AUTHENTIK_POSTGRESQL__USER",    valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:AUTHENTIK_POSTGRESQL__USER::" },
+        { name = "AUTHENTIK_POSTGRESQL__NAME",    valueFrom = "${data.aws_secretsmanager_secret.app_config.arn}:AUTHENTIK_POSTGRESQL__NAME::" }
       ]
 
       logConfiguration = {
@@ -211,7 +220,7 @@ resource "aws_ecs_service" "main" {
 
   load_balancer {
     target_group_arn = aws_lb_target_group.main.arn
-    container_name   = "authentik"
+    container_name   = "authentik-server"
     container_port   = 9000
   }
 

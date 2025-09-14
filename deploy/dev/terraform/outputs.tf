@@ -38,17 +38,6 @@ output "rds_endpoint" {
   value       = aws_db_instance.postgres.endpoint
 }
 
-output "rds_password" {
-  description = "RDS PostgreSQL Password (sensitive)"
-  value       = random_password.rds_password.result
-  sensitive   = true
-}
-
-output "authentik_secret_key" {
-  description = "Authentik Secret Key (sensitive)"
-  value       = random_password.authentik_secret_key.result
-  sensitive   = true
-}
 
 # CodePipeline outputs
 output "codepipeline_name" {

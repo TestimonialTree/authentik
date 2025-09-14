@@ -1,0 +1,1 @@
+try fromjson catch {} | . as $s | (["AUTHENTIK_SECRET_KEY","AUTHENTIK_POSTGRESQL__HOST","AUTHENTIK_POSTGRESQL__USER","AUTHENTIK_POSTGRESQL__PASSWORD","AUTHENTIK_POSTGRESQL__NAME"] | map(select(($s[.] // "") == ""))) as $m | if ($m|length)==0 then "Secrets OK" else "MISSING: " + ($m|join(", ")) end

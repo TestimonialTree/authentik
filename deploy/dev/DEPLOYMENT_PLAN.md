@@ -105,8 +105,10 @@ chmod +x deploy/dev/scripts/*.sh
 
 ### Step 6: Deploy to ECS
 ```bash
-# Deploy Authentik to ECS Fargate
-./deploy/dev/scripts/deploy-ecs.sh
+# Recommended: use CodePipeline to deploy (commit triggers build/deploy)
+
+# Optional: manual emergency deploy to ECS Fargate
+./deploy/dev/scripts/manual-deploy.sh
 
 # This creates:
 # - ECS task definition
@@ -163,7 +165,7 @@ deploy/dev/
 └── scripts/
     ├── build-and-push.sh         # ECR image build/push
     ├── run-migrations.sh         # Database initialization
-    └── deploy-ecs.sh             # ECS service deployment
+    └── manual-deploy.sh          # Manual ECS service deployment
 ```
 
 ## Environment Variables Reference

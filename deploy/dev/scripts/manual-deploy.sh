@@ -1,13 +1,20 @@
 #!/bin/bash
-# Deploy Authentik to AWS ECS Fargate (development environment)
+# Manual emergency deploy to AWS ECS Fargate (development environment)
 set -e
 
 # Configuration
 AWS_REGION=${AWS_REGION:-us-east-1}
 CLUSTER_NAME=${CLUSTER_NAME:-authentik-dev}
 SERVICE_NAME=${SERVICE_NAME:-authentik-dev-service}
-ECR_REPOSITORY=${ECR_REPOSITORY:-authentik-dev}
-IMAGE_TAG=${IMAGE_TAG:-latest}
+# Optionally source an image override written by build-and-push.sh
+# If IMAGE_URI is already set in the environment, it takes precedence.
+if [ -z "${IMAGE_URI:-}" ] && [ -f "deploy/dev/.env.image" ]; then
+  # shellcheck disable=SC1091
+  . "deploy/dev/.env.image"
+  echo "Loaded IMAGE_URI from deploy/dev/.env.image: ${IMAGE_URI}"
+fi
+# Use official Authentik server image by default; override with IMAGE_URI if provided
+IMAGE_URI=${IMAGE_URI:-ghcr.io/goauthentik/server:2024.8.3}
 AWS_ACCOUNT_ID=${AWS_ACCOUNT_ID:-"your-account-id"}
 DOMAIN_NAME=${DOMAIN_NAME:-dev-auth.testimonialtree.com}
 
@@ -17,7 +24,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-echo -e "${YELLOW}Deploying Authentik to ECS Fargate...${NC}"
+echo -e "${YELLOW}[Manual Deploy] Deploying Authentik to ECS Fargate...${NC}"
 
 # Get current directory (should be project root)
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../" && pwd)"
@@ -28,9 +35,6 @@ if [ "$AWS_ACCOUNT_ID" = "your-account-id" ]; then
     echo -e "${RED}Error: Please set AWS_ACCOUNT_ID environment variable${NC}"
     exit 1
 fi
-
-# Full ECR URI
-ECR_URI="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY"
 
 # Create ECS cluster if it doesn't exist
 echo -e "${YELLOW}Ensuring ECS cluster exists...${NC}"
@@ -52,7 +56,7 @@ cat > deploy/dev/task-definition.json << EOF
   "containerDefinitions": [
     {
       "name": "authentik-server",
-      "image": "$ECR_URI:$IMAGE_TAG",
+      "image": "$IMAGE_URI",
       "essential": true,
       "portMappings": [
         {
@@ -80,26 +84,11 @@ cat > deploy/dev/task-definition.json << EOF
         }
       ],
       "secrets": [
-        {
-          "name": "AUTHENTIK_SECRET_KEY",
-          "valueFrom": "arn:aws:secretsmanager:$AWS_REGION:$AWS_ACCOUNT_ID:secret:authentik-dev/secret-key"
-        },
-        {
-          "name": "AUTHENTIK_POSTGRESQL__HOST",
-          "valueFrom": "arn:aws:secretsmanager:$AWS_REGION:$AWS_ACCOUNT_ID:secret:authentik-dev/rds-host"
-        },
-        {
-          "name": "AUTHENTIK_POSTGRESQL__PASSWORD",
-          "valueFrom": "arn:aws:secretsmanager:$AWS_REGION:$AWS_ACCOUNT_ID:secret:authentik-dev/rds-password"
-        },
-        {
-          "name": "AUTHENTIK_POSTGRESQL__USER",
-          "valueFrom": "arn:aws:secretsmanager:$AWS_REGION:$AWS_ACCOUNT_ID:secret:authentik-dev/rds-user"
-        },
-        {
-          "name": "AUTHENTIK_POSTGRESQL__NAME",
-          "valueFrom": "arn:aws:secretsmanager:$AWS_REGION:$AWS_ACCOUNT_ID:secret:authentik-dev/rds-database"
-        }
+        { "name": "AUTHENTIK_SECRET_KEY",           "valueFrom": "authentik-dev/app-config:AUTHENTIK_SECRET_KEY::" },
+        { "name": "AUTHENTIK_POSTGRESQL__HOST",     "valueFrom": "authentik-dev/app-config:AUTHENTIK_POSTGRESQL__HOST::" },
+        { "name": "AUTHENTIK_POSTGRESQL__PASSWORD", "valueFrom": "authentik-dev/app-config:AUTHENTIK_POSTGRESQL__PASSWORD::" },
+        { "name": "AUTHENTIK_POSTGRESQL__USER",     "valueFrom": "authentik-dev/app-config:AUTHENTIK_POSTGRESQL__USER::" },
+        { "name": "AUTHENTIK_POSTGRESQL__NAME",     "valueFrom": "authentik-dev/app-config:AUTHENTIK_POSTGRESQL__NAME::" }
       ],
       "logConfiguration": {
         "logDriver": "awslogs",
@@ -122,30 +111,15 @@ cat > deploy/dev/task-definition.json << EOF
     },
     {
       "name": "authentik-worker",
-      "image": "$ECR_URI:$IMAGE_TAG",
+      "image": "$IMAGE_URI",
       "essential": true,
       "command": ["worker"],
       "secrets": [
-        {
-          "name": "AUTHENTIK_SECRET_KEY",
-          "valueFrom": "arn:aws:secretsmanager:$AWS_REGION:$AWS_ACCOUNT_ID:secret:authentik-dev/secret-key"
-        },
-        {
-          "name": "AUTHENTIK_POSTGRESQL__HOST",
-          "valueFrom": "arn:aws:secretsmanager:$AWS_REGION:$AWS_ACCOUNT_ID:secret:authentik-dev/rds-host"
-        },
-        {
-          "name": "AUTHENTIK_POSTGRESQL__PASSWORD",
-          "valueFrom": "arn:aws:secretsmanager:$AWS_REGION:$AWS_ACCOUNT_ID:secret:authentik-dev/rds-password"
-        },
-        {
-          "name": "AUTHENTIK_POSTGRESQL__USER",
-          "valueFrom": "arn:aws:secretsmanager:$AWS_REGION:$AWS_ACCOUNT_ID:secret:authentik-dev/rds-user"
-        },
-        {
-          "name": "AUTHENTIK_POSTGRESQL__NAME",
-          "valueFrom": "arn:aws:secretsmanager:$AWS_REGION:$AWS_ACCOUNT_ID:secret:authentik-dev/rds-database"
-        }
+        { "name": "AUTHENTIK_SECRET_KEY",           "valueFrom": "authentik-dev/app-config:AUTHENTIK_SECRET_KEY::" },
+        { "name": "AUTHENTIK_POSTGRESQL__HOST",     "valueFrom": "authentik-dev/app-config:AUTHENTIK_POSTGRESQL__HOST::" },
+        { "name": "AUTHENTIK_POSTGRESQL__PASSWORD", "valueFrom": "authentik-dev/app-config:AUTHENTIK_POSTGRESQL__PASSWORD::" },
+        { "name": "AUTHENTIK_POSTGRESQL__USER",     "valueFrom": "authentik-dev/app-config:AUTHENTIK_POSTGRESQL__USER::" },
+        { "name": "AUTHENTIK_POSTGRESQL__NAME",     "valueFrom": "authentik-dev/app-config:AUTHENTIK_POSTGRESQL__NAME::" }
       ],
       "logConfiguration": {
         "logDriver": "awslogs",

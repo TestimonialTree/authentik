@@ -8,7 +8,7 @@
   "containerDefinitions": [
     {
       "name": "authentik-server",
-      "image": "597332957026.dkr.ecr.us-east-1.amazonaws.com/authentik-dev:latest",
+      "image": "ghcr.io/goauthentik/server:2024.8.3",
       "essential": true,
       "portMappings": [
         {
@@ -36,26 +36,11 @@
         }
       ],
       "secrets": [
-        {
-          "name": "AUTHENTIK_SECRET_KEY",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:597332957026:secret:authentik-dev/secret-key"
-        },
-        {
-          "name": "AUTHENTIK_POSTGRESQL__HOST",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:597332957026:secret:authentik-dev/rds-host"
-        },
-        {
-          "name": "AUTHENTIK_POSTGRESQL__PASSWORD",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:597332957026:secret:authentik-dev/rds-password"
-        },
-        {
-          "name": "AUTHENTIK_POSTGRESQL__USER",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:597332957026:secret:authentik-dev/rds-user"
-        },
-        {
-          "name": "AUTHENTIK_POSTGRESQL__NAME",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:597332957026:secret:authentik-dev/rds-database"
-        }
+        { "name": "AUTHENTIK_SECRET_KEY",           "valueFrom": "authentik-dev/app-config:AUTHENTIK_SECRET_KEY::" },
+        { "name": "AUTHENTIK_POSTGRESQL__HOST",     "valueFrom": "authentik-dev/app-config:AUTHENTIK_POSTGRESQL__HOST::" },
+        { "name": "AUTHENTIK_POSTGRESQL__PASSWORD", "valueFrom": "authentik-dev/app-config:AUTHENTIK_POSTGRESQL__PASSWORD::" },
+        { "name": "AUTHENTIK_POSTGRESQL__USER",     "valueFrom": "authentik-dev/app-config:AUTHENTIK_POSTGRESQL__USER::" },
+        { "name": "AUTHENTIK_POSTGRESQL__NAME",     "valueFrom": "authentik-dev/app-config:AUTHENTIK_POSTGRESQL__NAME::" }
       ],
       "logConfiguration": {
         "logDriver": "awslogs",
@@ -78,30 +63,15 @@
     },
     {
       "name": "authentik-worker",
-      "image": "597332957026.dkr.ecr.us-east-1.amazonaws.com/authentik-dev:latest",
+      "image": "ghcr.io/goauthentik/server:2024.8.3",
       "essential": true,
       "command": ["worker"],
       "secrets": [
-        {
-          "name": "AUTHENTIK_SECRET_KEY",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:597332957026:secret:authentik-dev/secret-key"
-        },
-        {
-          "name": "AUTHENTIK_POSTGRESQL__HOST",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:597332957026:secret:authentik-dev/rds-host"
-        },
-        {
-          "name": "AUTHENTIK_POSTGRESQL__PASSWORD",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:597332957026:secret:authentik-dev/rds-password"
-        },
-        {
-          "name": "AUTHENTIK_POSTGRESQL__USER",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:597332957026:secret:authentik-dev/rds-user"
-        },
-        {
-          "name": "AUTHENTIK_POSTGRESQL__NAME",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:597332957026:secret:authentik-dev/rds-database"
-        }
+        { "name": "AUTHENTIK_SECRET_KEY",           "valueFrom": "authentik-dev/app-config:AUTHENTIK_SECRET_KEY::" },
+        { "name": "AUTHENTIK_POSTGRESQL__HOST",     "valueFrom": "authentik-dev/app-config:AUTHENTIK_POSTGRESQL__HOST::" },
+        { "name": "AUTHENTIK_POSTGRESQL__PASSWORD", "valueFrom": "authentik-dev/app-config:AUTHENTIK_POSTGRESQL__PASSWORD::" },
+        { "name": "AUTHENTIK_POSTGRESQL__USER",     "valueFrom": "authentik-dev/app-config:AUTHENTIK_POSTGRESQL__USER::" },
+        { "name": "AUTHENTIK_POSTGRESQL__NAME",     "valueFrom": "authentik-dev/app-config:AUTHENTIK_POSTGRESQL__NAME::" }
       ],
       "logConfiguration": {
         "logDriver": "awslogs",

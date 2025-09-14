@@ -47,4 +47,10 @@ resource "aws_db_instance" "postgres" {
   tags = {
     Name = "${var.project_name}-postgres"
   }
+
+  lifecycle {
+    ignore_changes = [
+      engine_version
+    ]
+  }
 }

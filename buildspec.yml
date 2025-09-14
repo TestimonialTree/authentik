@@ -40,7 +40,11 @@ phases:
         cat > imageDefinitions.json <<EOF
         [
           {
-            "name": "authentik",
+            "name": "authentik-server",
+            "imageUri": "$REPOSITORY_URI:$IMAGE_TAG"
+          },
+          {
+            "name": "authentik-worker",
             "imageUri": "$REPOSITORY_URI:$IMAGE_TAG"
           }
         ]
@@ -58,7 +62,7 @@ phases:
           "taskRoleArn": "arn:aws:iam::$AWS_ACCOUNT_ID:role/$IMAGE_REPO_NAME-ecs-execution-role",
           "containerDefinitions": [
             {
-              "name": "authentik",
+              "name": "authentik-server",
               "image": "<IMAGE1_URI>",
               "portMappings": [
                 {
@@ -83,26 +87,36 @@ phases:
                 }
               ],
               "secrets": [
-                {
-                  "name": "AUTHENTIK_SECRET_KEY",
-                  "valueFrom": "arn:aws:secretsmanager:$AWS_DEFAULT_REGION:$AWS_ACCOUNT_ID:secret:$IMAGE_REPO_NAME-authentik-secret-key"
-                },
-                {
-                  "name": "AUTHENTIK_POSTGRESQL__HOST",
-                  "valueFrom": "arn:aws:secretsmanager:$AWS_DEFAULT_REGION:$AWS_ACCOUNT_ID:secret:$IMAGE_REPO_NAME-rds-host"
-                },
-                {
-                  "name": "AUTHENTIK_POSTGRESQL__PASSWORD",
-                  "valueFrom": "arn:aws:secretsmanager:$AWS_DEFAULT_REGION:$AWS_ACCOUNT_ID:secret:$IMAGE_REPO_NAME-rds-password"
-                },
-                {
-                  "name": "AUTHENTIK_POSTGRESQL__USER",
-                  "valueFrom": "arn:aws:secretsmanager:$AWS_DEFAULT_REGION:$AWS_ACCOUNT_ID:secret:$IMAGE_REPO_NAME-rds-user"
-                },
-                {
-                  "name": "AUTHENTIK_POSTGRESQL__NAME",
-                  "valueFrom": "arn:aws:secretsmanager:$AWS_DEFAULT_REGION:$AWS_ACCOUNT_ID:secret:$IMAGE_REPO_NAME-rds-database"
+                { "name": "AUTHENTIK_SECRET_KEY",           "valueFrom": "arn:aws:secretsmanager:$AWS_DEFAULT_REGION:$AWS_ACCOUNT_ID:secret:$IMAGE_REPO_NAME/app-config:AUTHENTIK_SECRET_KEY::" },
+                { "name": "AUTHENTIK_POSTGRESQL__HOST",     "valueFrom": "arn:aws:secretsmanager:$AWS_DEFAULT_REGION:$AWS_ACCOUNT_ID:secret:$IMAGE_REPO_NAME/app-config:AUTHENTIK_POSTGRESQL__HOST::" },
+                { "name": "AUTHENTIK_POSTGRESQL__PASSWORD", "valueFrom": "arn:aws:secretsmanager:$AWS_DEFAULT_REGION:$AWS_ACCOUNT_ID:secret:$IMAGE_REPO_NAME/app-config:AUTHENTIK_POSTGRESQL__PASSWORD::" },
+                { "name": "AUTHENTIK_POSTGRESQL__USER",     "valueFrom": "arn:aws:secretsmanager:$AWS_DEFAULT_REGION:$AWS_ACCOUNT_ID:secret:$IMAGE_REPO_NAME/app-config:AUTHENTIK_POSTGRESQL__USER::" },
+                { "name": "AUTHENTIK_POSTGRESQL__NAME",     "valueFrom": "arn:aws:secretsmanager:$AWS_DEFAULT_REGION:$AWS_ACCOUNT_ID:secret:$IMAGE_REPO_NAME/app-config:AUTHENTIK_POSTGRESQL__NAME::" }
+              ],
+              "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                  "awslogs-group": "/ecs/$IMAGE_REPO_NAME",
+                  "awslogs-region": "$AWS_DEFAULT_REGION",
+                  "awslogs-stream-prefix": "ecs"
                 }
+              },
+              "essential": true
+            },
+            {
+              "name": "authentik-worker",
+              "image": "<IMAGE2_URI>",
+              "command": ["worker"],
+              "environment": [
+                { "name": "AUTHENTIK_REDIS__HOST", "value": "redis" },
+                { "name": "AUTHENTIK_LOG_LEVEL", "value": "info" }
+              ],
+              "secrets": [
+                { "name": "AUTHENTIK_SECRET_KEY", "valueFrom": "arn:aws:secretsmanager:$AWS_DEFAULT_REGION:$AWS_ACCOUNT_ID:secret:$IMAGE_REPO_NAME-authentik-secret-key" },
+                { "name": "AUTHENTIK_POSTGRESQL__HOST", "valueFrom": "arn:aws:secretsmanager:$AWS_DEFAULT_REGION:$AWS_ACCOUNT_ID:secret:$IMAGE_REPO_NAME-rds-host" },
+                { "name": "AUTHENTIK_POSTGRESQL__PASSWORD", "valueFrom": "arn:aws:secretsmanager:$AWS_DEFAULT_REGION:$AWS_ACCOUNT_ID:secret:$IMAGE_REPO_NAME-rds-password" },
+                { "name": "AUTHENTIK_POSTGRESQL__USER", "valueFrom": "arn:aws:secretsmanager:$AWS_DEFAULT_REGION:$AWS_ACCOUNT_ID:secret:$IMAGE_REPO_NAME-rds-user" },
+                { "name": "AUTHENTIK_POSTGRESQL__NAME", "valueFrom": "arn:aws:secretsmanager:$AWS_DEFAULT_REGION:$AWS_ACCOUNT_ID:secret:$IMAGE_REPO_NAME-rds-database" }
               ],
               "logConfiguration": {
                 "logDriver": "awslogs",
@@ -147,7 +161,7 @@ phases:
               Properties:
                 TaskDefinition: <TASK_DEFINITION>
                 LoadBalancerInfo:
-                  ContainerName: "authentik"
+                  ContainerName: "authentik-server"
                   ContainerPort: 9000
         EOF
 
