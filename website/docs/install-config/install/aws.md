@@ -2,33 +2,9 @@
 title: AWS installation
 ---
 
-You can install authentik to run on AWS with a CloudFormation template.
+The previous AWS CloudFormation–based installer has been removed. For AWS deployments, we recommend one of the following supported paths instead:
 
-### Prerequisites
+- Docker Compose: run on EC2 or other hosts behind your own ALB/NGINX. See [Docker Compose](./docker-compose.mdx).
+- Kubernetes on EKS: deploy using the official Helm chart. See [Kubernetes](./kubernetes.md).
 
-- An AWS account.
-- An [AWS Certificate Manager](https://aws.amazon.com/certificate-manager/) certificate. Take note of the ARN of the certificate.
-
-### Installation
-
-Log in to your AWS account and create a CloudFormation stack [with our template](https://console.aws.amazon.com/cloudformation/home#/stacks/create/review?stackName=authentik&templateURL=https://authentik-cloudformation-templates.s3.amazonaws.com/authentik.ecs.latest.yaml).
-
-Under the **Certificate ARN** input, enter the previously created certificate ARN. You can also configure other settings if needed. You can follow the prompts to create the stack.
-
-This stack will create the following resources:
-
-- AWS SSM secrets for the PostgreSQL user and the authentik secret key
-- A VPC for all other resources
-- A RDS PostgreSQL Multi-AZ cluster
-- An ElastiCache Redis Multi-AZ cluster
-- An ECS cluster with two tasks:
-    - One for the authentik server
-    - One for the authentik worker
-- An ALB (Application Load Balancer) pointing to the authentik server ECS task with the configured certificate
-- An EFS filesystem mounted on both ECS tasks for media file storage
-
-The stack will output the endpoint of the ALB that to which you can point your DNS records.
-
-### Further customization
-
-If you require further customization, we recommend you install authentik via [Docker Compose](./docker-compose.mdx) or [Kubernetes](./kubernetes.md).
+If you maintain internal Terraform for AWS (ALB/ECS/RDS/CodePipeline), follow your Terraform documentation and CI/CD process.

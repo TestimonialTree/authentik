@@ -21,76 +21,66 @@ The deployment consists of:
 
 ## Quick Start
 
-### 1. Set Environment Variables
+### 1. Deploy the Terraform CI/CD Pipeline
 
 ```bash
-export AWS_REGION=us-west-2
-export AWS_ACCOUNT_ID=your-account-id
-export HOSTED_ZONE_ID=your-route53-hosted-zone-id  # optional
+# From the repo root
+./deploy/dev/deploy-pipeline.sh
 ```
 
-### 2. Deploy Infrastructure
+This provisions ALB, ECS, RDS, ECR, CloudWatch, and CodePipeline/CodeBuild into the existing VPC, then prints useful outputs (ALB DNS, RDS endpoint, etc.).
+
+### 2. Configure Environment
 
 ```bash
-# Deploy the AWS infrastructure using CloudFormation
-aws cloudformation create-stack \
-  --stack-name authentik-dev-infrastructure \
-  --template-body file://aws-infrastructure.yml \
-  --parameters ParameterKey=DomainName,ParameterValue=dev-auth.testimonialtree.com \
-               ParameterKey=HostedZoneId,ParameterValue=$HOSTED_ZONE_ID \
-  --capabilities CAPABILITY_IAM \
-  --region $AWS_REGION
+# Get values from Terraform outputs
+cd deploy/dev/terraform
+terraform output
 
-# Wait for stack completion (10-15 minutes)
-aws cloudformation wait stack-create-complete \
-  --stack-name authentik-dev-infrastructure \
-  --region $AWS_REGION
-```
+# Example: capture RDS host (trim :port)
+RDS_ENDPOINT=$(terraform output -raw rds_endpoint | cut -d: -f1)
+cd ../../..
 
-### 3. Configure Environment
+# Update .env.dev with actual RDS endpoint (if not already set)
+sed -i '' "s/your-rds-endpoint.region.rds.amazonaws.com/$RDS_ENDPOINT/g" .env.dev
 
-```bash
-# Update .env.dev with actual RDS endpoint
-# Get RDS endpoint from CloudFormation outputs
-RDS_ENDPOINT=$(aws cloudformation describe-stacks \
-  --stack-name authentik-dev-infrastructure \
-  --query 'Stacks[0].Outputs[?OutputKey==`RDSEndpoint`].OutputValue' \
-  --output text \
-  --region $AWS_REGION)
-
-# Update .env.dev file
-sed -i "s/your-rds-endpoint.region.rds.amazonaws.com/$RDS_ENDPOINT/g" .env.dev
-
-# Generate a secure secret key
+# Generate a secure secret key (only if you need a new one)
 AUTHENTIK_SECRET_KEY=$(openssl rand -hex 32)
-sed -i "s/dev-change-this-to-a-secure-random-key-64-characters-long-minimum/$AUTHENTIK_SECRET_KEY/g" .env.dev
+sed -i '' "s/dev-change-this-to-a-secure-random-key-64-characters-long-minimum/$AUTHENTIK_SECRET_KEY/g" .env.dev
+
+# Create or update unified JSON secret in Secrets Manager from your .env.dev
+bash deploy/dev/scripts/secrets-sync.sh
 ```
 
-### 4. Build and Push Docker Image
+### 3. Build and Push or Use the Pipeline
+
+Option A — Use CodePipeline (recommended):
+- Package and upload source, then start the pipeline
 
 ```bash
-# Make scripts executable
-chmod +x scripts/*.sh
-
-# Build and push to ECR
-./scripts/build-and-push.sh
+./deploy/dev/upload-source.sh
+# In the AWS Console: CodePipeline → your pipeline → Release change
 ```
 
-### 5. Run Database Migrations
+Option B — Build/push locally (for custom image testing):
 
 ```bash
-# Run initial database setup
-./scripts/run-migrations.sh
+chmod +x deploy/dev/scripts/*.sh
+./deploy/dev/scripts/build-and-push.sh
 ```
 
-### 6. Deploy ECS Service
+### 4. Run Database Migrations
 
 ```bash
-# Deploy to ECS Fargate via CodePipeline (recommended)
-# Push a commit to trigger the pipeline.
+./deploy/dev/scripts/run-migrations.sh
+```
 
-# Or use the manual emergency deploy script (optional):
-./scripts/manual-deploy.sh
+### 5. Deploy/Verify Service
+
+```bash
+# Preferred: let CodePipeline deploy to ECS
+# Optional: manual emergency deploy to ECS
+./deploy/dev/scripts/manual-deploy.sh
 ```
 
 ## Detailed Configuration
@@ -120,61 +110,29 @@ AUTHENTIK_COOKIE_DOMAIN=dev-auth.testimonialtree.com
 
 ### SSL Certificate Setup
 
-See [SSL_SETUP.md](SSL_SETUP.md) for detailed SSL configuration options:
-- AWS Certificate Manager (recommended)
-- Let's Encrypt with Certbot
-- Self-signed certificates
+See [SSL_SETUP.md](SSL_SETUP.md) for detailed SSL configuration options. For this environment, an ACM certificate is created by Terraform; complete DNS validation from the AWS Console, then point your domain A record to the ALB DNS from Terraform outputs.
 
-### Manual Infrastructure Steps (Alternative)
+### Notes on Infrastructure
 
-If you prefer manual setup instead of CloudFormation:
-
-1. **Create VPC and Networking**:
-   - VPC with public and private subnets
-   - Internet Gateway and NAT Gateway
-   - Route tables and security groups
-
-2. **Create RDS Instance**:
-   ```bash
-   aws rds create-db-instance \
-     --db-instance-identifier authentik-dev-postgres \
-     --db-instance-class db.t3.micro \
-     --engine postgres \
-     --engine-version 16.4 \
-     --master-username authentik \
-     --master-user-password your-secure-password \
-     --allocated-storage 20 \
-     --db-name authentik_dev \
-     --vpc-security-group-ids sg-xxxxxxxxx \
-     --db-subnet-group-name your-db-subnet-group
-   ```
-
-3. **Create ECS Cluster**:
-   ```bash
-   aws ecs create-cluster --cluster-name authentik-dev
-   ```
-
-4. **Create Application Load Balancer**:
-   ```bash
-   aws elbv2 create-load-balancer \
-     --name authentik-dev-alb \
-     --subnets subnet-xxxxxxxx subnet-yyyyyyyy \
-     --security-groups sg-xxxxxxxxx
-   ```
+The Terraform in `deploy/dev/terraform` uses an existing VPC and subnets, and provisions ALB, ECS (Fargate), RDS, ECR, CloudWatch, Secrets, and CodePipeline/CodeBuild.
 
 ## File Structure
 
 ```
 deploy/dev/
 ├── README.md                    # This file
-├── SSL_SETUP.md                # SSL certificate configuration guide
-├── aws-infrastructure.yml      # CloudFormation template
-├── .env.dev                    # Environment variables (configure this)
-├── docker-compose.dev.yml      # Docker Compose for local testing
-└── scripts/
-    ├── build-and-push.sh       # Build and push Docker image to ECR
-    ├── run-migrations.sh       # Run database migrations
-    └── manual-deploy.sh        # Manual/Emergency deploy to ECS Fargate
+├── PIPELINE-README.md           # CI/CD pipeline details
+├── SSL_SETUP.md                 # SSL certificate configuration guide
+├── .env.dev                     # Environment variables (configure this)
+├── docker-compose.dev.yml       # Docker Compose for local testing
+├── deploy-pipeline.sh           # Wrapper to init/plan/apply Terraform
+├── upload-source.sh             # Package + upload source to S3 (pipeline)
+├── scripts/
+│   ├── build-and-push.sh        # Build and push Docker image to ECR
+│   ├── run-migrations.sh        # Run database migrations
+│   ├── manual-deploy.sh         # Manual/Emergency deploy to ECS Fargate
+│   └── secrets-sync.sh          # Create/update unified JSON app secret
+└── terraform/                   # Terraform for ALB/ECS/RDS/ECR/CodePipeline
 ```
 
 ## Monitoring and Logs
@@ -231,27 +189,26 @@ aws logs filter-log-events \
 
 4. **Load Balancer Issues**:
    ```bash
-   # Check target group health
+   # Check target group health (using Terraform output)
    aws elbv2 describe-target-health \
-     --target-group-arn $(aws cloudformation describe-stacks \
-       --stack-name authentik-dev-infrastructure \
-       --query 'Stacks[0].Outputs[?OutputKey==`TargetGroup`].OutputValue' \
-       --output text)
+     --target-group-arn $(cd deploy/dev/terraform && terraform output -raw target_group_arn)
    ```
 
 ### Debug Commands
 
 ```bash
-# Check CloudFormation stack events
-aws cloudformation describe-stack-events \
-  --stack-name authentik-dev-infrastructure \
-  --region $AWS_REGION
+# Terraform outputs
+cd deploy/dev/terraform && terraform output && cd ../../..
 
-# Get stack outputs
-aws cloudformation describe-stacks \
-  --stack-name authentik-dev-infrastructure \
-  --query 'Stacks[0].Outputs' \
-  --region $AWS_REGION
+# ECS service status
+aws ecs describe-services --cluster authentik-dev --services authentik-dev
+
+# Target group health
+aws elbv2 describe-target-health \
+  --target-group-arn $(cd deploy/dev/terraform && terraform output -raw target_group_arn)
+
+# Logs
+aws logs tail /ecs/authentik-dev --follow
 
 # Test connectivity to services
 curl -I https://dev-auth.testimonialtree.com/-/health/ready/
@@ -271,16 +228,13 @@ For development environment:
 To destroy the development environment:
 
 ```bash
-# Delete CloudFormation stack (this will remove most resources)
-aws cloudformation delete-stack \
-  --stack-name authentik-dev-infrastructure \
-  --region $AWS_REGION
+cd deploy/dev/terraform
+terraform destroy
 
-# Remove ECR images
+# Optional: remove ECR images
 aws ecr batch-delete-image \
   --repository-name authentik-dev \
-  --image-ids imageTag=latest \
-  --region $AWS_REGION
+  --image-ids imageTag=latest
 
 # Clean up local files
 rm -f deploy/dev/.env.image
