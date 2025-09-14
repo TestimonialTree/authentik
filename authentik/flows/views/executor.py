@@ -103,10 +103,9 @@ class FlowExecutorView(APIView):
     permission_classes = [AllowAny]
     
     def __init__(self, *args, **kwargs):
+        # Avoid rebinding dispatch at runtime — it breaks method binding and
+        # can cause "dispatch() missing 1 required positional argument: 'request'".
         super().__init__(*args, **kwargs)
-        # Conditionally apply xframe_options_sameorigin decorator based on configuration
-        if not CONFIG.get_bool("web.disable_x_frame_options", False):
-            self.dispatch = method_decorator(xframe_options_sameorigin)(self.dispatch)
 
     flow: Flow = None
 
@@ -231,6 +230,9 @@ class FlowExecutorView(APIView):
             self.current_stage_view.kwargs = self.kwargs
             self.current_stage_view.request = request
             try:
+                # Apply X-Frame-Options dynamically without rebinding the method.
+                if not CONFIG.get_bool("web.disable_x_frame_options", False):
+                    return xframe_options_sameorigin(super().dispatch)(request)
                 return super().dispatch(request)
             except InvalidStageError as exc:
                 return self.stage_invalid(str(exc))
