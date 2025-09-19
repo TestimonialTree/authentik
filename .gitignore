@@ -212,3 +212,14 @@ source_docs/
 
 ### Docker ###
 docker-compose.override.yml
+
+### Claude Code ###
+.claude/
+
+### Terraform ###
+*.tfstate
+*.tfstate.*
+*.tfvars
+.terraform/
+tfplan
+.terraform.lock.hcl
