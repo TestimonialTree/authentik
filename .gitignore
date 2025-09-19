@@ -215,3 +215,11 @@ docker-compose.override.yml
 
 ### Claude Code ###
 .claude/
+
+### Terraform ###
+*.tfstate
+*.tfstate.*
+*.tfvars
+.terraform/
+tfplan
+.terraform.lock.hcl
