@@ -148,9 +148,9 @@ resource "aws_ecs_task_definition" "authentik_server" {
           "curl -f http://localhost:9000/-/health/live/ || exit 1"
         ]
         interval    = 30
-        timeout     = 5
+        timeout     = 10
         retries     = 3
-        startPeriod = 60
+        startPeriod = 180
       }
 
       # Resource limits
