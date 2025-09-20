@@ -111,6 +111,14 @@ resource "aws_ecs_task_definition" "authentik_server" {
         {
           name  = "AUTHENTIK_DISABLE_UPDATE_CHECK"
           value = "true"
+        },
+        {
+          name  = "AUTHENTIK_BOOTSTRAP_PASSWORD"
+          value = "SecureBootstrap2024!"
+        },
+        {
+          name  = "AUTHENTIK_BOOTSTRAP_EMAIL"
+          value = "admin@testimonialtree.com"
         }
       ]
 
@@ -214,6 +222,14 @@ resource "aws_ecs_task_definition" "authentik_worker" {
         {
           name  = "AUTHENTIK_DISABLE_UPDATE_CHECK"
           value = "true"
+        },
+        {
+          name  = "AUTHENTIK_BOOTSTRAP_PASSWORD"
+          value = "SecureBootstrap2024!"
+        },
+        {
+          name  = "AUTHENTIK_BOOTSTRAP_EMAIL"
+          value = "admin@testimonialtree.com"
         }
       ]
 

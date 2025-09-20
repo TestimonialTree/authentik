@@ -223,3 +223,7 @@ docker-compose.override.yml
 .terraform/
 tfplan
 .terraform.lock.hcl
+
+# AWS Session Manager Plugin binaries
+terraform/prod/terraform/sessionmanager-bundle/
+terraform/prod/terraform/sessionmanager-bundle.zip
