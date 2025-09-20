@@ -82,7 +82,7 @@ resource "aws_ecs_task_definition" "authentik_server" {
         },
         {
           name  = "AUTHENTIK_POSTGRESQL__HOST"
-          value = aws_db_instance.postgres.endpoint
+          value = split(":", aws_db_instance.postgres.endpoint)[0]
         },
         {
           name  = "AUTHENTIK_POSTGRESQL__PORT"
@@ -174,7 +174,7 @@ resource "aws_ecs_task_definition" "authentik_worker" {
   container_definitions = jsonencode([
     {
       name      = "authentik-worker"
-      image     = "${aws_ecr_repository.authentik.repository_url}:latest"
+      image     = "ghcr.io/goauthentik/server:2024.8.3"
       essential = true
       command   = ["worker"]
 
@@ -189,7 +189,7 @@ resource "aws_ecs_task_definition" "authentik_worker" {
         },
         {
           name  = "AUTHENTIK_POSTGRESQL__HOST"
-          value = aws_db_instance.postgres.endpoint
+          value = split(":", aws_db_instance.postgres.endpoint)[0]
         },
         {
           name  = "AUTHENTIK_POSTGRESQL__PORT"

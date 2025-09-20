@@ -68,6 +68,18 @@ USER authentik
 
 The `docker-compose.yml` file defines all required services:
 
+### Deployment Strategy Comparison
+
+**Local Development**: Both server and worker use the same custom image (`authentik-custom:latest`) that includes OAuth2 modifications.
+
+**Dev Environment (Working)**: Both server and worker use custom ECR image. Dev appears to be working despite this configuration, suggesting the dev custom image may support both commands.
+
+**Production (Fixed)**: Uses a mixed strategy for reliability:
+- **Server**: Uses custom ECR image with OAuth2 modifications
+- **Worker**: Uses official Authentik image (`ghcr.io/goauthentik/server:2024.8.3`) since workers don't handle OAuth2 tokens
+
+This production approach ensures workers have access to the full, tested worker functionality while servers get the custom OAuth2 behavior. **The dev environment should be updated to use this same strategy.**
+
 ```yaml
 services:
   postgresql:
@@ -164,9 +176,18 @@ volumes:
 
 ### 1. Build the Custom Docker Image
 
+**For Local Development:**
 ```bash
 docker build -f Dockerfile.custom -t authentik-custom:latest .
 ```
+
+**For Production Deployment (AWS Fargate):**
+```bash
+# Must specify linux/amd64 platform for AWS Fargate compatibility
+docker buildx build --platform linux/amd64 -f Dockerfile.custom -t authentik-custom:latest .
+```
+
+**Note**: AWS Fargate requires `linux/amd64` architecture. Building without `--platform linux/amd64` may result in "Exec format error" when deploying to ECS.
 
 ### 2. Start the Services
 
