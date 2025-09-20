@@ -1,0 +1,91 @@
+# =============================================================================
+# Authentik Production Deployment Configuration
+# =============================================================================
+# Copy this file to terraform.tfvars and customize the values for your environment
+
+# Environment Configuration
+environment = "prod"
+aws_region  = "us-east-1"
+
+# Network Configuration
+vpc_cidr = "10.1.0.0/16"
+
+# Domain and SSL Configuration
+domain_name     = "auth.testimonialtree.com"
+certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/12345678-1234-1234-1234-123456789012"
+
+# Database Configuration
+db_instance_class           = "db.t3.small"
+db_engine_version          = "15.7"
+db_allocated_storage       = 20
+db_max_allocated_storage   = 100
+db_backup_retention_period = 7
+db_backup_window          = "03:00-04:00"
+db_maintenance_window     = "Sun:04:00-Sun:05:00"
+
+# Redis Configuration
+redis_node_type            = "cache.t3.micro"
+redis_engine_version       = "7.0"
+redis_parameter_group_name = "default.redis7"
+
+# ECS Configuration
+ecs_task_cpu       = 512
+ecs_task_memory    = 1024
+ecs_desired_count  = 2
+container_image    = "ghcr.io/goauthentik/server:2024.8.3"
+
+# Application Configuration (IMPORTANT: Change these values!)
+authentik_secret_key      = "your-very-secure-secret-key-here-min-32-chars"
+authentik_error_reporting = true
+authentik_log_level      = "info"
+
+# Monitoring Configuration
+cloudwatch_log_retention_days = 14
+enable_detailed_monitoring    = true
+notification_email           = "admin@testimonialtree.com"
+
+# Security Configuration
+allowed_cidr_blocks = ["0.0.0.0/0"]  # Restrict this to your office/VPN IPs for better security
+
+# High Availability & Backup Configuration
+enable_deletion_protection = true
+enable_automated_backups  = true
+
+# Cost Optimization
+enable_nat_instance = false  # Set to true to use NAT instance instead of NAT Gateway for cost savings
+
+# Upgrade Features (Set to true to enable advanced features)
+enable_auto_scaling  = false  # Enable ECS auto-scaling
+enable_cloudfront    = false  # Enable CloudFront CDN
+enable_waf          = false  # Enable WAF protection
+enable_read_replica = false  # Enable RDS read replica
+enable_redis_cluster = false  # Enable Redis cluster mode
+
+# =============================================================================
+# Security Notes:
+# =============================================================================
+# 1. Generate a secure secret key:
+#    openssl rand -base64 32
+#
+# 2. Restrict allowed_cidr_blocks to your office/VPN IP ranges
+#
+# 3. Use AWS Secrets Manager for sensitive values in production
+#
+# 4. Enable CloudTrail for audit logging
+#
+# 5. Consider using AWS Config for compliance monitoring
+#
+# =============================================================================
+# Cost Optimization Tips:
+# =============================================================================
+# 1. Start with smaller instance types and scale up as needed
+#
+# 2. Use Reserved Instances for RDS if you plan to run 24/7
+#
+# 3. Enable enable_nat_instance = true for development to save costs
+#
+# 4. Monitor CloudWatch costs and adjust log retention as needed
+#
+# 5. Set up billing alerts to monitor spending
+#
+# =============================================================================

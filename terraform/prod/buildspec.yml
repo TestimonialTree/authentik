@@ -1,0 +1,129 @@
+version: 0.2
+
+env:
+  variables:
+    AWS_DEFAULT_REGION: us-east-1
+    AWS_ACCOUNT_ID: 597332957026
+    IMAGE_REPO_NAME: prod-authentik
+    IMAGE_TAG: latest
+  parameter-store:
+    DOCKER_BUILDKIT: /authentik/prod/docker-buildkit
+
+phases:
+  pre_build:
+    commands:
+      - echo Logging in to Amazon ECR...
+      - aws --version
+      - echo $AWS_DEFAULT_REGION
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
+      - REPOSITORY_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME
+      - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
+      - BUILD_TAG=${COMMIT_HASH:=latest}
+      - echo Build started on `date`
+      - echo Building the Docker image...
+      - echo Repository URI is $REPOSITORY_URI
+      - echo Build tag is $BUILD_TAG
+
+  build:
+    commands:
+      - echo Build started on `date`
+      - echo Building the Docker image with custom modifications...
+
+      # Build the custom Authentik image
+      - docker build -f Dockerfile.custom -t $IMAGE_REPO_NAME:$IMAGE_TAG .
+      - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $REPOSITORY_URI:$IMAGE_TAG
+      - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $REPOSITORY_URI:$BUILD_TAG
+      - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $REPOSITORY_URI:prod-$BUILD_TAG
+
+      # Run security scan
+      - echo Running security scan...
+      - |
+        docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+          -v $HOME/.trivy:/root/.cache \
+          aquasec/trivy:latest image --format json --output scan-results.json $REPOSITORY_URI:$BUILD_TAG || true
+
+      # Basic health check
+      - echo Running basic container health check...
+      - |
+        CONTAINER_ID=$(docker run -d -p 9000:9000 --env AUTHENTIK_SECRET_KEY=test-key-for-build-only \
+          --env AUTHENTIK_REDIS__HOST=localhost --env AUTHENTIK_POSTGRESQL__HOST=localhost \
+          $REPOSITORY_URI:$BUILD_TAG server)
+        sleep 30
+        docker logs $CONTAINER_ID
+        docker stop $CONTAINER_ID || true
+        docker rm $CONTAINER_ID || true
+
+  post_build:
+    commands:
+      - echo Build completed on `date`
+      - echo Pushing the Docker images...
+      - docker push $REPOSITORY_URI:$IMAGE_TAG
+      - docker push $REPOSITORY_URI:$BUILD_TAG
+      - docker push $REPOSITORY_URI:prod-$BUILD_TAG
+
+      # Update ECS service to use new image
+      - echo Updating ECS service...
+      - |
+        aws ecs update-service \
+          --cluster prod-authentik \
+          --service prod-authentik-server \
+          --force-new-deployment \
+          --region $AWS_DEFAULT_REGION
+
+      - |
+        aws ecs update-service \
+          --cluster prod-authentik \
+          --service prod-authentik-worker \
+          --force-new-deployment \
+          --region $AWS_DEFAULT_REGION
+
+      # Wait for deployment to stabilize
+      - echo Waiting for services to stabilize...
+      - |
+        aws ecs wait services-stable \
+          --cluster prod-authentik \
+          --services prod-authentik-server \
+          --region $AWS_DEFAULT_REGION
+
+      - |
+        aws ecs wait services-stable \
+          --cluster prod-authentik \
+          --services prod-authentik-worker \
+          --region $AWS_DEFAULT_REGION
+
+      # Run post-deployment health checks
+      - echo Running post-deployment health checks...
+      - |
+        HEALTH_URL="https://auth.testimonialtree.com/-/health/live/"
+        for i in {1..10}; do
+          if curl -f -s $HEALTH_URL > /dev/null; then
+            echo "Health check passed"
+            break
+          else
+            echo "Health check failed, attempt $i/10"
+            sleep 30
+          fi
+          if [ $i -eq 10 ]; then
+            echo "Health check failed after 10 attempts"
+            exit 1
+          fi
+        done
+
+      # Send deployment notification
+      - echo Sending deployment notification...
+      - |
+        aws sns publish \
+          --topic-arn "arn:aws:sns:$AWS_DEFAULT_REGION:$AWS_ACCOUNT_ID:prod-authentik-alerts" \
+          --message "Authentik production deployment completed successfully. Build: $BUILD_TAG" \
+          --subject "Authentik Production Deployment Success" \
+          --region $AWS_DEFAULT_REGION || echo "SNS notification failed (topic may not exist)"
+
+artifacts:
+  files:
+    - scan-results.json
+  name: authentik-prod-build-$BUILD_TAG
+
+cache:
+  paths:
+    - '/root/.docker/**/*'
+    - '/root/.trivy/**/*'
