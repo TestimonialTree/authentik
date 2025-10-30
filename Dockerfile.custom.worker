@@ -18,4 +18,4 @@ RUN chown -R authentik:authentik /authentik/providers/oauth2/views/token.py
 USER authentik
 
 # Override entrypoint to start the worker instead of the server
-ENTRYPOINT ["dumb-init", "--", "ak" "worker"]
+ENTRYPOINT [ "dumb-init", "--", "ak", "worker" ]
