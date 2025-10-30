@@ -19,3 +19,4 @@ USER authentik
 
 # Inherit base ENTRYPOINT and CMD from authentik/server
 # (no override needed)
+ENTRYPOINT [ "dumb-init", "--", "ak", "dev_server" ]
