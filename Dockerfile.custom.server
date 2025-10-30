@@ -13,7 +13,7 @@ COPY authentik/providers/oauth2/views/token.py /authentik/providers/oauth2/views
 # Fix permissions
 USER root
 RUN chown -R authentik:authentik /authentik/providers/oauth2/views/token.py
-
+RUN apt update -y && apt install curl -y 
 # Switch back to authentik user
 USER authentik
 
