@@ -3,8 +3,7 @@
 # This image extends the official Authentik server to include
 # a modified version of token.py while preserving base behavior.
 
-FROM ghcr.io/goauthentik/server:2024.8.3
-
+FROM ghcr.io/goauthentik/server:2025.12.0-rc1
 # Cache bust for forced rebuild
 RUN echo "Cache bust: $(date)"
 
