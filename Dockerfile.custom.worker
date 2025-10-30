@@ -1,0 +1,21 @@
+# Custom Authentik Worker Image
+# -----------------------------
+# Same base as the server, but runs the background worker process.
+
+FROM ghcr.io/goauthentik/server:2024.8.3
+
+# Cache bust for forced rebuild
+RUN echo "Cache bust: $(date)"
+
+# Copy your custom file
+COPY authentik/providers/oauth2/views/token.py /authentik/providers/oauth2/views/token.py
+
+# Fix permissions
+USER root
+RUN chown -R authentik:authentik /authentik/providers/oauth2/views/token.py
+
+# Switch back to authentik user
+USER authentik
+
+# Override entrypoint to start the worker instead of the server
+ENTRYPOINT ["authentik", "worker"]
