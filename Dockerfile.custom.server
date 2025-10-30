@@ -1,0 +1,22 @@
+# Custom Authentik Server Image
+# -----------------------------
+# This image extends the official Authentik server to include
+# a modified version of token.py while preserving base behavior.
+
+FROM ghcr.io/goauthentik/server:2024.8.3
+
+# Cache bust for forced rebuild
+RUN echo "Cache bust: $(date)"
+
+# Copy your custom file
+COPY authentik/providers/oauth2/views/token.py /authentik/providers/oauth2/views/token.py
+
+# Fix permissions
+USER root
+RUN chown -R authentik:authentik /authentik/providers/oauth2/views/token.py
+
+# Switch back to authentik user
+USER authentik
+
+# Inherit base ENTRYPOINT and CMD from authentik/server
+# (no override needed)
