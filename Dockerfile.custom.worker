@@ -2,7 +2,7 @@
 # -----------------------------
 # Same base as the server, but runs the background worker process.
 
-FROM ghcr.io/goauthentik/server:2025.10
+FROM ghcr.io/goauthentik/server:2024.8.3
 
 # Cache bust for forced rebuild
 RUN echo "Cache bust: $(date)"
@@ -18,4 +18,4 @@ RUN chown -R authentik:authentik /authentik/providers/oauth2/views/token.py
 USER authentik
 
 # Override entrypoint to start the worker instead of the server
-ENTRYPOINT ["authentik", "worker"]
+ENTRYPOINT ["dumb-init", "--", "ak" "worker"]
