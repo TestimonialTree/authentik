@@ -2,7 +2,7 @@
 # -----------------------------
 # Same base as the server, but runs the background worker process.
 
-FROM ghcr.io/goauthentik/server:2024.8.3
+FROM ghcr.io/goauthentik/server:2025.12.0-rc1
 
 # Cache bust for forced rebuild
 RUN echo "Cache bust: $(date)"
