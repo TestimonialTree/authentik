@@ -104,7 +104,7 @@ COPY --from=uv /uv /uvx /bin/
 
 # Stage 5: Python dependencies
 FROM public.ecr.aws/docker/library/python:3.13-slim-bookworm AS python-deps
-
+COPY --from=ghcr.io/astral-sh/uv:latest /usr/local/bin/uv /usr/local/bin/uv
 ARG TARGETARCH
 ARG TARGETVARIANT
 
