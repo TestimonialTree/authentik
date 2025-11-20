@@ -25,7 +25,8 @@ def update_score(request: HttpRequest, identifier: str, amount: int):
     """Update score for IP and User"""
     remote_ip = ClientIPMiddleware.get_client_ip(request)
     tenant = get_current_tenant()
-    new_score = clamp(amount, tenant.reputation_lower_limit, tenant.reputation_upper_limit)
+    # Use default values instead of tenant fields
+    new_score = clamp(amount, -5, 5)  # DEFAULT_REPUTATION_LOWER_LIMIT, DEFAULT_REPUTATION_UPPER_LIMIT
 
     with transaction.atomic():
         reputation, created = Reputation.objects.select_for_update().get_or_create(
@@ -33,7 +34,7 @@ def update_score(request: HttpRequest, identifier: str, amount: int):
             identifier=identifier,
             defaults={
                 "score": clamp(
-                    amount, tenant.reputation_lower_limit, tenant.reputation_upper_limit
+                    amount, -5, 5  # DEFAULT_REPUTATION_LOWER_LIMIT, DEFAULT_REPUTATION_UPPER_LIMIT
                 ),
                 "ip_geo_data": GEOIP_CONTEXT_PROCESSOR.city_dict(remote_ip) or {},
                 "ip_asn_data": ASN_CONTEXT_PROCESSOR.asn_dict(remote_ip) or {},
@@ -44,8 +45,8 @@ def update_score(request: HttpRequest, identifier: str, amount: int):
         if not created:
             new_score = clamp(
                 reputation.score + amount,
-                tenant.reputation_lower_limit,
-                tenant.reputation_upper_limit,
+                -5,  # DEFAULT_REPUTATION_LOWER_LIMIT
+                5,   # DEFAULT_REPUTATION_UPPER_LIMIT
             )
             reputation.score = new_score
             reputation.save()

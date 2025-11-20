@@ -108,13 +108,20 @@ RUN --mount=type=cache,id=apt-$TARGETARCH$TARGETVARIANT,sharing=locked,target=/v
     libltdl-dev libxmlsec1-dev && \
     curl https://sh.rustup.rs -sSf | sh -s -- -y
 
+# Install uv package manager
+RUN pip install uv
+
+# Create directory and set working directory
+RUN mkdir -p /ak-root
+WORKDIR /ak-root
+
 ENV UV_NO_BINARY_PACKAGE="cryptography lxml python-kadmin-rs xmlsec"
 
-RUN --mount=type=bind,target=pyproject.toml,src=pyproject.toml \
-    --mount=type=bind,target=uv.lock,src=uv.lock \
-    --mount=type=bind,target=packages,src=packages \
+RUN --mount=type=bind,target=/ak-root/pyproject.toml,src=pyproject.toml \
+    --mount=type=bind,target=/ak-root/uv.lock,src=uv.lock \
+    --mount=type=bind,target=/ak-root/packages,src=packages \
     --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-install-project --no-dev
+    cd /ak-root && uv sync --frozen --no-install-project --no-dev
 
 # Stage 6: Final image
 FROM public.ecr.aws/docker/library/python:3.13-slim-bookworm AS final-image
