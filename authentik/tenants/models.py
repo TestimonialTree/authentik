@@ -74,16 +74,16 @@ class Tenant(TenantMixin, SerializerModel):
             "Events will be deleted after this duration.(Format: weeks=3;days=2;hours=3,seconds=2)."
         ),
     )
-    # reputation_lower_limit = models.IntegerField(
-    #     help_text=_("Reputation cannot decrease lower than this value. Zero or negative."),
-    #     default=DEFAULT_REPUTATION_LOWER_LIMIT,
-    #     validators=[MaxValueValidator(0)],
-    # )
-    # reputation_upper_limit = models.IntegerField(
-    #     help_text=_("Reputation cannot increase higher than this value. Zero or positive."),
-    #     default=DEFAULT_REPUTATION_UPPER_LIMIT,
-    #     validators=[MinValueValidator(0)],
-    # )
+    reputation_lower_limit = models.IntegerField(
+        help_text=_("Reputation cannot decrease lower than this value. Zero or negative."),
+        default=DEFAULT_REPUTATION_LOWER_LIMIT,
+        validators=[MaxValueValidator(0)],
+    )
+    reputation_upper_limit = models.IntegerField(
+        help_text=_("Reputation cannot increase higher than this value. Zero or positive."),
+        default=DEFAULT_REPUTATION_UPPER_LIMIT,
+        validators=[MinValueValidator(0)],
+    )
     footer_links = models.JSONField(
         help_text=_("The option configures the footer links on the flow executor pages."),
         default=list,

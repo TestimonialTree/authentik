@@ -97,11 +97,16 @@ class InvalidStageError(SentryIgnoredException):
     """Error raised when a challenge from a stage is not valid"""
 
 
-@method_decorator(xframe_options_sameorigin, name='dispatch')
 class FlowExecutorView(APIView):
     """Flow executor, passing requests to Stage Views"""
 
     permission_classes = [AllowAny]
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Conditionally apply xframe_options_sameorigin decorator based on configuration
+        if not CONFIG.get_bool("web.disable_x_frame_options", False):
+            self.dispatch = method_decorator(xframe_options_sameorigin)(self.dispatch)
 
     flow: Flow = None
 

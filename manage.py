@@ -14,15 +14,14 @@ setup()
 
 if __name__ == "__main__":
     wait_for_db()
-    # Migrations are disabled - comment out the lines below to re-enable
-    # if (
-    #     len(sys.argv) > 1
-    #     # Explicitly only run migrate for server and worker
-    #     and sys.argv[1] in ["dev_server", "worker"]
-    #     # and don't run if this is the child process of a dev_server
-    #     and os.environ.get(DJANGO_AUTORELOAD_ENV, None) is None
-    # ):
-    #     run_migrations()
+    if (
+        len(sys.argv) > 1
+        # Explicitly only run migrate for server and worker
+        and sys.argv[1] in ["dev_server", "worker"]
+        # and don't run if this is the child process of a dev_server
+        and os.environ.get(DJANGO_AUTORELOAD_ENV, None) is None
+    ):
+        run_migrations()
     try:
         from django.core.management import execute_from_command_line
     except ImportError as exc:

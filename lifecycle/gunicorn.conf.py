@@ -140,4 +140,4 @@ if not CONFIG.get_bool("disable_startup_analytics", False):
             pass
 
 start_debug_server()
-# run_migrations()  # Migrations disabled
+run_migrations()
