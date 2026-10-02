@@ -6,23 +6,24 @@
 #
 # Builds Dockerfile.custom on the given base, starts Postgres + Redis + server,
 # seeds an OAuth2 provider, and checks the token endpoint's success and failure
-# paths. Exits non-zero on any failure. Needs Docker. Uses port 19000.
+# paths. Exits non-zero on any failure. Needs Docker. Each run uses its own
+# container names and a free port, so runs can overlap (OVERLAY_TEST_PORT overrides).
 # Background: TTV2-2478 (prod token endpoint returned 405 for every error and
 # never matched a redirect URI because token.py did not fit the 2024.8.3 base).
 set -euo pipefail
 
 BASE="${1:-ghcr.io/goauthentik/server:2024.8.3}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-NAME="ak-overlay-test"
+NAME="ak-overlay-test-$$"
 NET="$NAME-net"
-PORT=19000
+PORT="${OVERLAY_TEST_PORT:-$(python3 -c 'import socket;s=socket.socket();s.bind(("",0));print(s.getsockname()[1])')}"
 U="http://localhost:$PORT/application/o/token/"
 R="https://api.rechat.com/testimonialtree/auth/done"
-IMAGE="$NAME:local"
+IMAGE="ak-overlay-test:$$"
 
-cleanup() { docker rm -f "$NAME-server" "$NAME-pg" "$NAME-redis" >/dev/null 2>&1 || true; docker network rm "$NET" >/dev/null 2>&1 || true; }
+cleanup() { docker rm -f "$NAME-server" "$NAME-pg" "$NAME-redis" >/dev/null 2>&1 || true; docker network rm "$NET" >/dev/null 2>&1 || true; docker rmi "$IMAGE" >/dev/null 2>&1 || true; rm -f "$BODY"; }
+BODY="$(mktemp)"
 trap cleanup EXIT
-cleanup
 
 echo "Base: $BASE"
 docker build --platform linux/amd64 -q -f "$ROOT/Dockerfile.custom" --build-arg "AUTHENTIK_BASE=$BASE" -t "$IMAGE" "$ROOT" >/dev/null
@@ -50,8 +51,8 @@ fail=0
 check() { # name expected_status actual_status [extra condition result]
   if [ "$2" = "$3" ] && [ "${4:-ok}" = ok ]; then echo "PASS  $1 ($3)"; else echo "FAIL  $1 (expected $2, got $3 ${4:-})"; fail=1; fi
 }
-post() { curl -s -o /tmp/overlay-body -w '%{http_code}' -X POST "$@" "$U"; }
-has() { grep -q "\"$1\"" /tmp/overlay-body && echo ok || echo "missing $1"; }
+post() { curl -s -o "$BODY" -w '%{http_code}' -X POST "$@" "$U"; }
+has() { grep -q "\"$1\"" "$BODY" && echo ok || echo "missing $1"; }
 
 check "bare POST, no client -> invalid_client"  400 "$(post -d grant_type=authorization_code)" "$(has invalid_client)"
 check "code exchange, exact redirect URI"       200 "$(post -u overlay-test:s3cret -d grant_type=authorization_code -d code=code-plain --data-urlencode redirect_uri=$R)" "$(has access_token)"
@@ -60,7 +61,7 @@ check "wrong redirect URI -> invalid_client"    400 "$(post -u overlay-test:s3cr
 check "wrong client secret -> invalid_client"   400 "$(post -u overlay-test:nope -d grant_type=authorization_code -d code=code-wrong-secret --data-urlencode redirect_uri=$R)" "$(has invalid_client)"
 check "bogus refresh token -> invalid_grant"    400 "$(post -u overlay-test:s3cret -d grant_type=refresh_token -d refresh_token=bogus)" "$(has invalid_grant)"
 check "code with offline_access"                200 "$(post -u overlay-test:s3cret -d grant_type=authorization_code -d code=code-offline --data-urlencode redirect_uri=$R)" "$(has refresh_token)"
-RT=$(python3 -c "import json;print(json.load(open('/tmp/overlay-body')).get('refresh_token',''))" 2>/dev/null || true)
+RT=$(python3 -c "import json;print(json.load(open('$BODY')).get('refresh_token',''))" 2>/dev/null || true)
 check "refresh grant"                           200 "$(post -u overlay-test:s3cret -d grant_type=refresh_token -d "refresh_token=$RT")" "$(has access_token)"
 cors=$(curl -s -D - -o /dev/null -H "Origin: https://api.rechat.com" -X POST -u overlay-test:s3cret -d grant_type=authorization_code -d code=code-cors --data-urlencode redirect_uri=$R "$U" | tr -d '\r' | grep -i '^access-control-allow-origin: https://api.rechat.com$' >/dev/null && echo ok || echo "no CORS header")
 check "CORS allow-origin on success"            ok ok "$cors"
