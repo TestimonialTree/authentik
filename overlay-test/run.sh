@@ -7,7 +7,7 @@
 # Builds Dockerfile.custom on the given base, starts Postgres + Redis + server,
 # seeds an OAuth2 provider, and checks the token endpoint's success and failure
 # paths. Exits non-zero on any failure. Needs Docker. Each run uses its own
-# container names and a free port, so runs can overlap (OVERLAY_TEST_PORT overrides).
+# container names and a Docker-assigned host port, so runs can overlap.
 # Background: TTV2-2478 (prod token endpoint returned 405 for every error and
 # never matched a redirect URI because token.py did not fit the 2024.8.3 base).
 set -euo pipefail
@@ -16,8 +16,6 @@ BASE="${1:-ghcr.io/goauthentik/server:2024.8.3}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 NAME="ak-overlay-test-$$"
 NET="$NAME-net"
-PORT="${OVERLAY_TEST_PORT:-$(python3 -c 'import socket;s=socket.socket();s.bind(("",0));print(s.getsockname()[1])')}"
-U="http://localhost:$PORT/application/o/token/"
 R="https://api.rechat.com/testimonialtree/auth/done"
 IMAGE="ak-overlay-test:$$"
 
@@ -30,13 +28,15 @@ docker build --platform linux/amd64 -q -f "$ROOT/Dockerfile.custom" --build-arg 
 docker network create "$NET" >/dev/null
 docker run -d --name "$NAME-pg" --network "$NET" -e POSTGRES_PASSWORD=pw -e POSTGRES_USER=authentik -e POSTGRES_DB=authentik postgres:16-alpine >/dev/null
 docker run -d --name "$NAME-redis" --network "$NET" redis:7-alpine >/dev/null
-docker run -d --name "$NAME-server" --network "$NET" -p "$PORT:9000" --platform linux/amd64 \
+docker run -d --name "$NAME-server" --network "$NET" -p "127.0.0.1::9000" --platform linux/amd64 \
   -e AUTHENTIK_SECRET_KEY=overlay-test-secret-key-0123456789abcdef \
   -e AUTHENTIK_POSTGRESQL__HOST="$NAME-pg" -e AUTHENTIK_POSTGRESQL__USER=authentik \
   -e AUTHENTIK_POSTGRESQL__NAME=authentik -e AUTHENTIK_POSTGRESQL__PASSWORD=pw \
   -e AUTHENTIK_REDIS__HOST="$NAME-redis" -e AUTHENTIK_ERROR_REPORTING__ENABLED=false \
   -e AUTHENTIK_DISABLE_UPDATE_CHECK=true "$IMAGE" server >/dev/null
 
+PORT="$(docker port "$NAME-server" 9000/tcp | head -1 | sed 's/.*://')"
+U="http://localhost:$PORT/application/o/token/"
 printf "Waiting for server (migrations take a few minutes)"
 for _ in $(seq 180); do
   [ "$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:$PORT/-/health/ready/")" = 200 ] && break
