@@ -70,6 +70,15 @@ from authentik.stages.password import BACKEND_INBUILT
 LOGGER = get_logger()
 
 
+def redirect_uri_strings(provider: OAuth2Provider) -> list[str]:
+    """Registered redirect URIs as a list.
+
+    This file is overlaid on the 2024.8.3 base image (Dockerfile.custom), where
+    redirect_uris is a newline-separated string, not 2025.x RedirectURI objects.
+    Iterating the string directly yields characters, so nothing ever matched (TTV2-2478)."""
+    return provider.redirect_uris.split()
+
+
 @dataclass(slots=True)
 class TokenParams:
     """Token params"""
@@ -249,17 +258,12 @@ class TokenParams:
             raise TokenError("invalid_grant")
 
     def __check_redirect_uri(self, request: HttpRequest):
-        allowed_redirect_urls = self.provider.redirect_uris
+        allowed_redirect_urls = redirect_uri_strings(self.provider)
         # At this point, no provider should have a blank redirect_uri, in case they do
         # this will check an empty array and raise an error
 
-        match_found = False
-        for allowed in allowed_redirect_urls:
-            # Simple string comparison for now
-            if self.redirect_uri == allowed:
-                match_found = True
-                break
-        if not match_found:
+        # Exact string comparison only (no regex)
+        if self.redirect_uri not in allowed_redirect_urls:
             Event.new(
                 EventAction.CONFIGURATION_ERROR,
                 message="Invalid redirect URI used by provider",
@@ -712,12 +716,7 @@ class TokenView(View):
         response = super().dispatch(request, *args, **kwargs)
         allowed_origins = []
         if self.provider:
-            # Handle both string and object redirect_uris
-            for uri in self.provider.redirect_uris:
-                if hasattr(uri, 'url'):
-                    allowed_origins.append(uri.url)
-                else:
-                    allowed_origins.append(str(uri))
+            allowed_origins = redirect_uri_strings(self.provider)
         cors_allow(self.request, response, *allowed_origins)
         return response
 
@@ -755,9 +754,9 @@ class TokenView(View):
                     return TokenResponse(self.create_device_code_response())
                 raise TokenError("unsupported_grant_type")
         except (TokenError, DeviceCodeError) as error:
-            return TokenResponse(error.create_dict(request), status=400)
+            return TokenResponse(error.create_dict(), status=400)
         except UserAuthError as error:
-            return TokenResponse(error.create_dict(request), status=403)
+            return TokenResponse(error.create_dict(), status=403)
 
     def create_code_response(self) -> dict[str, Any]:
         """See https://datatracker.ietf.org/doc/html/rfc6749#section-4.1"""
@@ -770,7 +769,7 @@ class TokenView(View):
             # Keep same scopes as previous token
             scope=self.params.authorization_code.scope,
             auth_time=self.params.authorization_code.auth_time,
-            session=self.params.authorization_code.session,
+            session_id=self.params.authorization_code.session_id,
         )
         access_id_token = IDToken.new(
             self.provider,
@@ -799,7 +798,7 @@ class TokenView(View):
                 expires=refresh_token_expiry,
                 provider=self.provider,
                 auth_time=self.params.authorization_code.auth_time,
-                session=self.params.authorization_code.session,
+                session_id=self.params.authorization_code.session_id,
             )
             id_token = IDToken.new(
                 self.provider,
@@ -832,7 +831,7 @@ class TokenView(View):
             # Keep same scopes as previous token
             scope=self.params.refresh_token.scope,
             auth_time=self.params.refresh_token.auth_time,
-            session=self.params.refresh_token.session,
+            session_id=self.params.refresh_token.session_id,
         )
         access_token.id_token = IDToken.new(
             self.provider,
@@ -848,7 +847,7 @@ class TokenView(View):
             expires=refresh_token_expiry,
             provider=self.provider,
             auth_time=self.params.refresh_token.auth_time,
-            session=self.params.refresh_token.session,
+            session_id=self.params.refresh_token.session_id,
         )
         id_token = IDToken.new(
             self.provider,
