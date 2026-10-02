@@ -1,5 +1,8 @@
-# Use the official authentik server image as base
-FROM ghcr.io/goauthentik/server:2024.8.3
+# Use the official authentik server image as base.
+# Production runs the 2024.8.3 default; overlay-test/run.sh overrides it to check
+# token.py against newer bases too (TTV2-2478).
+ARG AUTHENTIK_BASE=ghcr.io/goauthentik/server:2024.8.3
+FROM ${AUTHENTIK_BASE}
 
 # Copy the modified token.py file with cache bust
 RUN echo "Cache bust: $(date)"

@@ -5,6 +5,7 @@ from binascii import Error
 from dataclasses import InitVar, dataclass
 from datetime import datetime
 from hashlib import sha256
+from inspect import signature
 from re import error as RegexError
 from re import fullmatch
 from typing import Any
@@ -50,7 +51,12 @@ from authentik.providers.oauth2.constants import (
     SCOPE_OFFLINE_ACCESS,
     TOKEN_TYPE,
 )
-from authentik.providers.oauth2.errors import DeviceCodeError, TokenError, UserAuthError
+from authentik.providers.oauth2.errors import (
+    DeviceCodeError,
+    OAuth2Error,
+    TokenError,
+    UserAuthError,
+)
 from authentik.providers.oauth2.id_token import IDToken
 from authentik.providers.oauth2.models import (
     AccessToken,
@@ -68,6 +74,33 @@ from authentik.stages.password.stage import PLAN_CONTEXT_METHOD, PLAN_CONTEXT_ME
 from authentik.stages.password import BACKEND_INBUILT
 
 LOGGER = get_logger()
+
+
+# This file runs in two places: the source-built server (this repo's version) and
+# Dockerfile.custom, which copies it onto the authentik 2024.8.3 image. The two
+# helpers below absorb the API differences between them (TTV2-2478).
+
+
+def redirect_uri_strings(provider: OAuth2Provider) -> list[str]:
+    """Registered redirect URIs as strings.
+
+    2024.8.3 stores a newline-separated string (iterating it yields characters);
+    this repo's version stores a list of RedirectURI objects."""
+    uris = provider.redirect_uris
+    if isinstance(uris, str):
+        return uris.split()
+    return [uri.url for uri in uris]
+
+
+# 2024.8.3's OAuth2Error.create_dict() takes no request; this repo's version requires one.
+_CREATE_DICT_TAKES_REQUEST = "request" in signature(OAuth2Error.create_dict).parameters
+
+
+def error_dict(error: OAuth2Error, request: HttpRequest) -> dict[str, Any]:
+    """Serialize an OAuth2 error on either base."""
+    if _CREATE_DICT_TAKES_REQUEST:
+        return error.create_dict(request)
+    return error.create_dict()
 
 
 @dataclass(slots=True)
@@ -249,17 +282,12 @@ class TokenParams:
             raise TokenError("invalid_grant")
 
     def __check_redirect_uri(self, request: HttpRequest):
-        allowed_redirect_urls = self.provider.redirect_uris
+        allowed_redirect_urls = redirect_uri_strings(self.provider)
         # At this point, no provider should have a blank redirect_uri, in case they do
         # this will check an empty array and raise an error
 
-        match_found = False
-        for allowed in allowed_redirect_urls:
-            # Simple string comparison for now
-            if self.redirect_uri == allowed:
-                match_found = True
-                break
-        if not match_found:
+        # Exact string comparison only (no regex)
+        if self.redirect_uri not in allowed_redirect_urls:
             Event.new(
                 EventAction.CONFIGURATION_ERROR,
                 message="Invalid redirect URI used by provider",
@@ -712,12 +740,7 @@ class TokenView(View):
         response = super().dispatch(request, *args, **kwargs)
         allowed_origins = []
         if self.provider:
-            # Handle both string and object redirect_uris
-            for uri in self.provider.redirect_uris:
-                if hasattr(uri, 'url'):
-                    allowed_origins.append(uri.url)
-                else:
-                    allowed_origins.append(str(uri))
+            allowed_origins = redirect_uri_strings(self.provider)
         cors_allow(self.request, response, *allowed_origins)
         return response
 
@@ -755,9 +778,9 @@ class TokenView(View):
                     return TokenResponse(self.create_device_code_response())
                 raise TokenError("unsupported_grant_type")
         except (TokenError, DeviceCodeError) as error:
-            return TokenResponse(error.create_dict(request), status=400)
+            return TokenResponse(error_dict(error, request), status=400)
         except UserAuthError as error:
-            return TokenResponse(error.create_dict(request), status=403)
+            return TokenResponse(error_dict(error, request), status=403)
 
     def create_code_response(self) -> dict[str, Any]:
         """See https://datatracker.ietf.org/doc/html/rfc6749#section-4.1"""
@@ -770,7 +793,7 @@ class TokenView(View):
             # Keep same scopes as previous token
             scope=self.params.authorization_code.scope,
             auth_time=self.params.authorization_code.auth_time,
-            session=self.params.authorization_code.session,
+            session_id=self.params.authorization_code.session_id,
         )
         access_id_token = IDToken.new(
             self.provider,
@@ -799,7 +822,7 @@ class TokenView(View):
                 expires=refresh_token_expiry,
                 provider=self.provider,
                 auth_time=self.params.authorization_code.auth_time,
-                session=self.params.authorization_code.session,
+                session_id=self.params.authorization_code.session_id,
             )
             id_token = IDToken.new(
                 self.provider,
@@ -832,7 +855,7 @@ class TokenView(View):
             # Keep same scopes as previous token
             scope=self.params.refresh_token.scope,
             auth_time=self.params.refresh_token.auth_time,
-            session=self.params.refresh_token.session,
+            session_id=self.params.refresh_token.session_id,
         )
         access_token.id_token = IDToken.new(
             self.provider,
@@ -848,7 +871,7 @@ class TokenView(View):
             expires=refresh_token_expiry,
             provider=self.provider,
             auth_time=self.params.refresh_token.auth_time,
-            session=self.params.refresh_token.session,
+            session_id=self.params.refresh_token.session_id,
         )
         id_token = IDToken.new(
             self.provider,
