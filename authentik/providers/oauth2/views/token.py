@@ -5,6 +5,7 @@ from binascii import Error
 from dataclasses import InitVar, dataclass
 from datetime import datetime
 from hashlib import sha256
+from inspect import signature
 from re import error as RegexError
 from re import fullmatch
 from typing import Any
@@ -50,7 +51,12 @@ from authentik.providers.oauth2.constants import (
     SCOPE_OFFLINE_ACCESS,
     TOKEN_TYPE,
 )
-from authentik.providers.oauth2.errors import DeviceCodeError, TokenError, UserAuthError
+from authentik.providers.oauth2.errors import (
+    DeviceCodeError,
+    OAuth2Error,
+    TokenError,
+    UserAuthError,
+)
 from authentik.providers.oauth2.id_token import IDToken
 from authentik.providers.oauth2.models import (
     AccessToken,
@@ -70,13 +76,31 @@ from authentik.stages.password import BACKEND_INBUILT
 LOGGER = get_logger()
 
 
-def redirect_uri_strings(provider: OAuth2Provider) -> list[str]:
-    """Registered redirect URIs as a list.
+# This file runs in two places: the source-built server (this repo's version) and
+# Dockerfile.custom, which copies it onto the authentik 2024.8.3 image. The two
+# helpers below absorb the API differences between them (TTV2-2478).
 
-    This file is overlaid on the 2024.8.3 base image (Dockerfile.custom), where
-    redirect_uris is a newline-separated string, not 2025.x RedirectURI objects.
-    Iterating the string directly yields characters, so nothing ever matched (TTV2-2478)."""
-    return provider.redirect_uris.split()
+
+def redirect_uri_strings(provider: OAuth2Provider) -> list[str]:
+    """Registered redirect URIs as strings.
+
+    2024.8.3 stores a newline-separated string (iterating it yields characters);
+    this repo's version stores a list of RedirectURI objects."""
+    uris = provider.redirect_uris
+    if isinstance(uris, str):
+        return uris.split()
+    return [uri.url for uri in uris]
+
+
+# 2024.8.3's OAuth2Error.create_dict() takes no request; this repo's version requires one.
+_CREATE_DICT_TAKES_REQUEST = "request" in signature(OAuth2Error.create_dict).parameters
+
+
+def error_dict(error: OAuth2Error, request: HttpRequest) -> dict[str, Any]:
+    """Serialize an OAuth2 error on either base."""
+    if _CREATE_DICT_TAKES_REQUEST:
+        return error.create_dict(request)
+    return error.create_dict()
 
 
 @dataclass(slots=True)
@@ -754,9 +778,9 @@ class TokenView(View):
                     return TokenResponse(self.create_device_code_response())
                 raise TokenError("unsupported_grant_type")
         except (TokenError, DeviceCodeError) as error:
-            return TokenResponse(error.create_dict(), status=400)
+            return TokenResponse(error_dict(error, request), status=400)
         except UserAuthError as error:
-            return TokenResponse(error.create_dict(), status=403)
+            return TokenResponse(error_dict(error, request), status=403)
 
     def create_code_response(self) -> dict[str, Any]:
         """See https://datatracker.ietf.org/doc/html/rfc6749#section-4.1"""
