@@ -12,8 +12,10 @@ from authentik.core.models import Application, User
 from authentik.flows.models import Flow, FlowDesignation
 from authentik.providers.oauth2 import models as oauth2_models
 from authentik.providers.oauth2.models import AuthorizationCode, OAuth2Provider
+from authentik.providers.proxy.models import ProxyMode, ProxyProvider
 
 REDIRECT_URI = "https://api.rechat.com/testimonialtree/auth/done"
+PROXY_EXTERNAL_HOST = "https://staff.example.com"
 
 flow, _ = Flow.objects.get_or_create(
     slug="overlay-test-authz",
@@ -40,17 +42,37 @@ else:
 provider.save()
 Application.objects.get_or_create(slug="overlay-test", defaults=dict(name="overlay-test", provider=provider))
 
+# Forward-auth proxy provider, set up the way the API serializer does it: Authentik
+# derives the callback URLs from external_host (regex-escaped on 2024.8.3).
+proxy = ProxyProvider.objects.filter(name="overlay-test-proxy").first()
+if not proxy:
+    proxy = ProxyProvider(
+        name="overlay-test-proxy",
+        authorization_flow=flow,
+        client_id="overlay-test-proxy",
+        client_secret="pr0xy",
+    )
+proxy.mode = ProxyMode.FORWARD_SINGLE
+proxy.external_host = PROXY_EXTERNAL_HOST
+proxy.save()
+proxy.set_oauth_defaults()
+proxy.save()
+Application.objects.get_or_create(slug="overlay-test-proxy", defaults=dict(name="overlay-test-proxy", provider=proxy))
+
 scopes = {
-    "code-plain": ["openid"],
-    "code-wrong-redirect": ["openid"],
-    "code-wrong-secret": ["openid"],
-    "code-offline": ["openid", "offline_access"],
-    "code-cors": ["openid"],
+    "code-plain": (provider, ["openid"]),
+    "code-wrong-redirect": (provider, ["openid"]),
+    "code-wrong-secret": (provider, ["openid"]),
+    "code-offline": (provider, ["openid", "offline_access"]),
+    "code-cors": (provider, ["openid"]),
+    "code-proxy": (proxy, ["openid", "email", "ak_proxy"]),
+    "code-proxy-escaped": (proxy, ["openid"]),
+    "code-proxy-wrong-redirect": (proxy, ["openid"]),
 }
-for code, scope in scopes.items():
+for code, (code_provider, scope) in scopes.items():
     AuthorizationCode.objects.filter(code=code).delete()
     AuthorizationCode.objects.create(
-        provider=provider,
+        provider=code_provider,
         user=user,
         code=code,
         expires=timezone.now() + timedelta(minutes=30),

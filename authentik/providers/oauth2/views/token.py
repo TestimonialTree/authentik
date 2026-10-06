@@ -85,10 +85,19 @@ def redirect_uri_strings(provider: OAuth2Provider) -> list[str]:
     """Registered redirect URIs as strings.
 
     2024.8.3 stores a newline-separated string (iterating it yields characters);
-    this repo's version stores a list of RedirectURI objects."""
+    this repo's version stores a list of RedirectURI objects.
+
+    2024.8.3 also writes a proxy provider's callback URLs regex-escaped
+    ("…/outpost.goauthentik.io/callback\\?X-authentik-auth-callback=true") while the
+    outpost sends the literal URL, so the escape is undone for proxy providers. Only
+    for them: Authentik regenerates their URIs from external_host on every save, so
+    an admin cannot put a pattern there."""
     uris = provider.redirect_uris
     if isinstance(uris, str):
-        return uris.split()
+        uris = uris.split()
+        if hasattr(provider, "proxyprovider"):
+            uris = [uri.replace("\\?", "?") for uri in uris]
+        return uris
     return [uri.url for uri in uris]
 
 
