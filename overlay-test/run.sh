@@ -67,6 +67,13 @@ cors=$(curl -s -D - -o /dev/null -H "Origin: https://api.rechat.com" -X POST -u 
 check "CORS allow-origin on success"            ok ok "$cors"
 check "password grant, good password"           200 "$(post -d grant_type=password -d client_id=overlay-test -d client_secret=s3cret -d username=overlay-agent -d 'password=AgentPw!2478')"
 check "password grant, bad password"            400 "$(post -d grant_type=password -d client_id=overlay-test -d client_secret=s3cret -d username=overlay-agent -d password=wrong)"
+# Forward-auth proxy provider: the outpost sends the literal callback URL. 2024.8.3 stores it
+# regex-escaped (callback\?X-…); newer bases store it literally, so the escaped spelling only
+# has to be refused there.
+P="https://staff.example.com/outpost.goauthentik.io/callback?X-authentik-auth-callback=true"
+check "proxy provider, outpost callback URL"    200 "$(post -u overlay-test-proxy:pr0xy -d grant_type=authorization_code -d code=code-proxy --data-urlencode "redirect_uri=$P")" "$(has id_token)"
+check "proxy provider, escaped spelling refused" 400 "$(post -u overlay-test-proxy:pr0xy -d grant_type=authorization_code -d code=code-proxy-escaped --data-urlencode "redirect_uri=${P/\?/\\?}")" "$(has invalid_client)"
+check "proxy provider, other URL -> invalid_client" 400 "$(post -u overlay-test-proxy:pr0xy -d grant_type=authorization_code -d code=code-proxy-wrong-redirect --data-urlencode "redirect_uri=https://staff.example.com/elsewhere")" "$(has invalid_client)"
 tb=$(docker logs "$NAME-server" 2>&1 | grep -c Traceback || true)
 check "no server tracebacks"                    0 "$tb"
 
