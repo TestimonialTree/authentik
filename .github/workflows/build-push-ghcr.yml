@@ -28,6 +28,21 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Generate TypeScript API client
+        # The Dockerfile COPYs ./gen-ts-api into the web build; it is generated
+        # from the committed schema.yml (not checked in), mirroring upstream CI.
+        run: |
+          mkdir -p gen-ts-api
+          docker run --rm -v "${PWD}:/local" --user "$(id -u):$(id -g)" \
+            docker.io/openapitools/openapi-generator-cli:v7.15.0 generate \
+            -i /local/schema.yml \
+            -g typescript-fetch \
+            -o /local/gen-ts-api \
+            -c /local/scripts/api-ts-config.yaml \
+            --additional-properties=npmVersion=1.0.0 \
+            --git-repo-id authentik \
+            --git-user-id goauthentik
+
       - name: Compute image tag
         id: tag
         run: echo "tag=dev-$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
